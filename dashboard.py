@@ -110,8 +110,8 @@ if st.session_state.module_choice == "None":
     show_title_page()
 else:
     if st.session_state.module_choice.startswith("Full Code 1"):
-        run_module("AO-LACCP")
+        run_module("FullCode1")
     elif st.session_state.module_choice.startswith("Full Code 2"):
-        run_module("AO-LACCP")
+        run_module("FullCode2")
     elif st.session_state.module_choice.startswith("Case Study Scenario"):
-        run_module(AO-LACCP")
+        run_module("CaseStudyScenario")
