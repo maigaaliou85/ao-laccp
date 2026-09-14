@@ -11,7 +11,7 @@ import sys
 # ------------------------------
 # Logo Path
 # ------------------------------
-logo_path = os.path.join(os.path.dirname(__file__), "marymount_logo - Copy.png")
+logo_path = os.path.join(os.path.dirname(__file__), "marymount_logo.png")
 
 # ------------------------------
 # Display Logo Centered
