@@ -11,7 +11,7 @@ import sys
 # ------------------------------
 # Logo Path
 # ------------------------------
-logo_path = os.path.join(os.path.dirname(__file__), "marymount_logo - Copy.png")
+logo_path = os.path.join(os.path.dirname(__file__), "marymount_logo.png")
 
 # ------------------------------
 # Display Logo Centered
@@ -110,8 +110,8 @@ if st.session_state.module_choice == "None":
     show_title_page()
 else:
     if st.session_state.module_choice.startswith("Full Code 1"):
-        run_module("FullCode1")
+        run_module("AO-LACCP")
     elif st.session_state.module_choice.startswith("Full Code 2"):
-        run_module("FullCode2")
+        run_module("AO-LACCP")
     elif st.session_state.module_choice.startswith("Case Study Scenario"):
-        run_module("CaseStudyScenario")
+        run_module(AO-LACCP")
