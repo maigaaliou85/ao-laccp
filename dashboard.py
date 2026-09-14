@@ -103,7 +103,7 @@ def run_module(folder_name):
     else:
         st.error(f"Module not found: {module_path}")
 
-
+def run_module(folder_name):
   module_path = os.path.join(folder_name, "main22.py")
     if os.path.exists(module_path):
         spec = importlib.util.spec_from_file_location("module_main", module_path)
@@ -113,7 +113,7 @@ def run_module(folder_name):
     else:
         st.error(f"Module not found: {module_path}")
 
-
+def run_module(folder_name):
   module_path = os.path.join(folder_name, "main33.py")
     if os.path.exists(module_path):
         spec = importlib.util.spec_from_file_location("module_main", module_path)
