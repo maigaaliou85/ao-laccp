@@ -16,7 +16,7 @@ st.title("AO-LACCP: AI-Orchestrated Latency-Aware Cryptographic Control Plane")
 # =============================
 # SIDEBAR
 # =============================
-st.sidebar.header("AOACA Control Panel")
+st.sidebar.header("AO-LACCP Control Panel")
 
 num_agents = st.sidebar.slider("Agents", 2, 10, 5)
 iterations = st.sidebar.slider("Iterations", 5, 30, 10)
