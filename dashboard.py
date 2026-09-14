@@ -94,7 +94,27 @@ if st.session_state.module_choice != "None":
 # Function to Import and Run a Module
 # ==============================
 def run_module(folder_name):
-    module_path = os.path.join(folder_name, "main.py")
+    module_path = os.path.join(folder_name, "main11.py")
+    if os.path.exists(module_path):
+        spec = importlib.util.spec_from_file_location("module_main", module_path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["module_main"] = module
+        spec.loader.exec_module(module)
+    else:
+        st.error(f"Module not found: {module_path}")
+
+
+  module_path = os.path.join(folder_name, "main22.py")
+    if os.path.exists(module_path):
+        spec = importlib.util.spec_from_file_location("module_main", module_path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["module_main"] = module
+        spec.loader.exec_module(module)
+    else:
+        st.error(f"Module not found: {module_path}")
+
+
+  module_path = os.path.join(folder_name, "main33.py")
     if os.path.exists(module_path):
         spec = importlib.util.spec_from_file_location("module_main", module_path)
         module = importlib.util.module_from_spec(spec)
