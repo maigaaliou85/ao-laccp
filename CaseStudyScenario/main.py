@@ -77,7 +77,7 @@ df = pd.DataFrame(data, columns=[
 # =============================
 # HYPOTHESIS TESTING
 # =============================
-st.header("📊 Hypothesis Testing Results")
+st.header("📊 Computational Evaluation Testing Results")
 
 def hypothesis_test(title, aoaca, baseline):
     f, p = stats.f_oneway(df[aoaca], df[baseline])
