@@ -43,7 +43,7 @@ policy_choice = st.sidebar.multiselect(
 # =============================
 st.subheader("📐 AO-LACCP Mathematical Model")
 
-st.latex(r"F_{AOACA} = \langle S, A, P, U, G, C, \Phi \rangle")
+st.latex(r"F_{AO-LACCP} = \langle S, A, P, U, G, C, \Phi \rangle")
 st.latex(r"R_t = \sigma(\beta_0 + \beta_1 X_t + \beta_2 V_t + \beta_3 L_t)")
 st.latex(r"U(A_t) = \alpha(1 - R_t) - \lambda C(A_t) - \delta L(A_t)")
 
@@ -63,15 +63,15 @@ for i in range(num_agents):
         R = 1 / (1 + np.exp(-( -1 + 2*X + 1.5*V + 1.2*L )))
 
         # AO-LACCP improvements
-        R_aoaca = R * np.random.uniform(0.4,0.7)
-        latency_aoaca = L * np.random.uniform(0.5,0.8)
-        agility_aoaca = np.random.uniform(1.5,2.5)
+        R_AO-LACCP = R * np.random.uniform(0.4,0.7)
+        latency_AO-LACCP = L * np.random.uniform(0.5,0.8)
+        agility_AO-LACCP = np.random.uniform(1.5,2.5)
 
-        data.append([i, t, R, R_aoaca, L, latency_aoaca, agility_aoaca])
+        data.append([i, t, R, R_AO-LACCP, L, latency_AO-LACCP, agility_AO-LACCP])
 
 df = pd.DataFrame(data, columns=[
-    "Agent","Iteration","Risk_Baseline","Risk_AOACA",
-    "Latency_Baseline","Latency_AOACA","Agility_AOACA"
+    "Agent","Iteration","Risk_Baseline","Risk_AO-LACCP",
+    "Latency_Baseline","Latency_AO-LACCP","Agility_AO-LACCP"
 ])
 
 # =============================
@@ -79,10 +79,10 @@ df = pd.DataFrame(data, columns=[
 # =============================
 st.header("📊 Computational Evaluation Testing Results")
 
-def hypothesis_test(title, aoaca, baseline):
-    f, p = stats.f_oneway(df[aoaca], df[baseline])
-    d = (df[aoaca].mean() - df[baseline].mean()) / np.sqrt(
-        (df[aoaca].std()**2 + df[baseline].std()**2)/2
+def hypothesis_test(title, AO-LACCP, baseline):
+    f, p = stats.f_oneway(df[AO-LACCP], df[baseline])
+    d = (df[AO-LACCP].mean() - df[baseline].mean()) / np.sqrt(
+        (df[AO-LACCP].std()**2 + df[baseline].std()**2)/2
     )
 
     st.subheader(title)
@@ -100,9 +100,9 @@ def hypothesis_test(title, aoaca, baseline):
 
     return f, p, d
 
-f1, p1, d1 = hypothesis_test("H1: Cyber Risk Reduction", "Risk_AOACA", "Risk_Baseline")
-f2, p2, d2 = hypothesis_test("H2: Cryptographic Agility", "Agility_AOACA", "Latency_Baseline")
-f3, p3, d3 = hypothesis_test("H3: Operational Resilience", "Latency_AOACA", "Latency_Baseline")
+f1, p1, d1 = hypothesis_test("H1: Cyber Risk Reduction", "Risk_AO-LACCP", "Risk_Baseline")
+f2, p2, d2 = hypothesis_test("H2: Cryptographic Agility", "Agility_AO-LACCP", "Latency_Baseline")
+f3, p3, d3 = hypothesis_test("H3: Operational Resilience", "Latency_AO-LACCP", "Latency_Baseline")
 
 # =============================
 # ADDITIONAL ANALYSIS
@@ -113,7 +113,7 @@ st.subheader("Post-hoc Analysis")
 st.write("AO-LACCP consistently outperforms baseline across all metrics.")
 
 st.subheader("Sensitivity Analysis")
-st.write(f"Risk Std Dev: {df['Risk_AOACA'].std():.4f}")
+st.write(f"Risk Std Dev: {df['Risk_AO-LACCP'].std():.4f}")
 
 st.subheader("Emerging Findings")
 st.info("Strongest improvements observed under Quantum Attack conditions.")
@@ -125,12 +125,12 @@ st.header("📊 Results Visualization")
 
 fig = go.Figure()
 fig.add_trace(go.Box(y=df["Risk_Baseline"], name="Baseline Risk"))
-fig.add_trace(go.Box(y=df["Risk_AOACA"], name="AOACA Risk"))
+fig.add_trace(go.Box(y=df["Risk_AO-LACCP"], name="AO-LACCP Risk"))
 st.plotly_chart(fig, use_container_width=True)
 
 fig2 = go.Figure()
 fig2.add_trace(go.Box(y=df["Latency_Baseline"], name="Baseline Latency"))
-fig2.add_trace(go.Box(y=df["Latency_AOACA"], name="AOACA Latency"))
+fig2.add_trace(go.Box(y=df["Latency_AO-LACCP"], name="AO-LACCP Latency"))
 st.plotly_chart(fig2, use_container_width=True)
 
 # =============================
@@ -228,7 +228,7 @@ Realistic FinTech scenarios (Quantum, Adversarial, Latency).
 st.subheader("📘 Design Science Research (DSR) Justification")
 
 st.write("""
-AOACA represents a Design Science artifact that integrates AI, cryptographic agility,
+AO-LACCP represents a Design Science artifact that integrates AI, cryptographic agility,
 and governance into a unified operational framework.
 
 It demonstrates:
