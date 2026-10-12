@@ -21,7 +21,7 @@ st.title(
 )
 
 st.caption(
-    "Design Science Research (DSR) Artifact | "
+    "Design Science Research Artifact | "
     "Computational Simulation and Evaluation"
 )
 
@@ -50,7 +50,7 @@ scenario = st.sidebar.selectbox(
 )
 
 crypto_choice = st.sidebar.multiselect(
-    "Cryptographic Options",
+    "Cryptography",
     ["RSA", "Hybrid", "PQC"],
     default=["RSA"]
 )
@@ -62,9 +62,8 @@ policy_choice = st.sidebar.multiselect(
 )
 
 st.sidebar.info(
-    "The agent count and iteration count control the number "
-    "of simulated observations. Cryptographic and compliance "
-    "selections are configuration inputs in this version."
+    "Configure the simulation population, threat scenario, "
+    "cryptographic options, and governance selections."
 )
 
 # ============================================================
@@ -90,11 +89,10 @@ st.latex(
 
 st.markdown(
     """
-    The model represents the conceptual relationship between
-    risk assessment, security actions, latency, cryptographic
-    choices, and policy constraints. The equations are a
-    conceptual model; the statistical distributions below are
-    the assumptions used in this simulation.
+    The equations describe the conceptual framework for
+    adaptive cyber-risk assessment and security decisions.
+    The experiment below uses synthetic distributions to
+    compare baseline and AO-LACCP performance.
     """
 )
 
@@ -102,9 +100,10 @@ st.markdown(
 # 4. SIMULATION PARAMETERS
 # ============================================================
 
-# Risk is bounded between 0 and 1.
-# The baseline SD of 0.15 is provisional; validate it
-# against your research design before reporting findings.
+# Risk scores must remain between 0 and 1.
+# The baseline risk SD of 0.15 is provisional.
+# A normal distribution with mean 0.55 and SD 0.88 is
+# not appropriate for a variable bounded between 0 and 1.
 
 BASELINE_RISK_MEAN = 0.55
 BASELINE_RISK_SD = 0.15
@@ -112,16 +111,11 @@ BASELINE_RISK_SD = 0.15
 AO_RISK_MEAN = 0.32
 AO_RISK_SD = 0.05
 
-# Latency measured in milliseconds.
-
 BASELINE_LATENCY_MEAN = 210.0
 BASELINE_LATENCY_SD = 25.0
 
 AO_LATENCY_MEAN = 120.0
 AO_LATENCY_SD = 15.0
-
-# Cryptographic agility index.
-# These are simulated index values, not physical units.
 
 BASELINE_AGILITY_MEAN = 1.0
 BASELINE_AGILITY_SD = 0.20
@@ -134,10 +128,7 @@ AO_AGILITY_SD = 0.25
 # ============================================================
 
 def beta_parameters(mean, sd):
-    """
-    Convert a feasible mean and standard deviation into
-    beta-distribution parameters for values in [0, 1].
-    """
+    """Calculate beta-distribution parameters."""
 
     variance = sd ** 2
 
@@ -147,8 +138,8 @@ def beta_parameters(mean, sd):
 
     if common <= 0:
         raise ValueError(
-            "The specified mean and standard deviation "
-            "are not feasible for a beta distribution."
+            "Invalid mean and standard deviation "
+            "for a beta distribution."
         )
 
     alpha = mean * common
@@ -158,7 +149,7 @@ def beta_parameters(mean, sd):
 
 
 def generate_risk(mean, sd, size):
-    """Generate bounded synthetic risk scores."""
+    """Generate risk scores in the interval [0, 1]."""
 
     alpha, beta = beta_parameters(mean, sd)
 
@@ -168,7 +159,7 @@ def generate_risk(mean, sd, size):
 
 
 def generate_positive_values(mean, sd, size):
-    """Generate positive latency or agility observations."""
+    """Generate positive synthetic measurements."""
 
     values = np.random.normal(
         loc=mean,
@@ -180,15 +171,14 @@ def generate_positive_values(mean, sd, size):
 
 
 # ============================================================
-# 6. DATA SIMULATION
+# 6. GENERATE SYNTHETIC DATA
 # ============================================================
 
-# Fixed seed makes results reproducible for a fixed configuration.
+# A fixed seed provides reproducibility for a given configuration.
 np.random.seed(42)
 
 n = num_agents * iterations
 
-# Generate baseline and AO-LACCP risk.
 risk_baseline = generate_risk(
     BASELINE_RISK_MEAN,
     BASELINE_RISK_SD,
@@ -201,7 +191,6 @@ risk_ao = generate_risk(
     n
 )
 
-# Generate latency in milliseconds.
 latency_baseline = generate_positive_values(
     BASELINE_LATENCY_MEAN,
     BASELINE_LATENCY_SD,
@@ -214,7 +203,6 @@ latency_ao = generate_positive_values(
     n
 )
 
-# Generate cryptographic agility index values.
 agility_baseline = generate_positive_values(
     BASELINE_AGILITY_MEAN,
     BASELINE_AGILITY_SD,
@@ -228,14 +216,11 @@ agility_ao = generate_positive_values(
 )
 
 # ============================================================
-# 7. THREAT SCENARIO ADJUSTMENTS
+# 7. THREAT SCENARIOS
 # ============================================================
 
-# These multipliers are illustrative scenario assumptions.
-# They are not measured threat-response effects.
-#
-# They are applied to the generated observations so that
-# selecting a scenario changes the simulated conditions.
+# These scenario adjustments are illustrative assumptions.
+# They are not empirically measured effects.
 
 if scenario == "Latency Spike":
 
@@ -277,7 +262,7 @@ df = pd.DataFrame({
         num_agents
     ),
 
-    "Scenario": scenario,
+    "Scenario": [scenario] * n,
 
     "Risk_Baseline": risk_baseline,
     "Risk_AO_LACCP": risk_ao,
@@ -303,24 +288,24 @@ col3.metric("Observations per Group", n)
 col4.metric("Threat Scenario", scenario)
 
 st.caption(
-    "Baseline and AO-LACCP observations are independently "
-    "generated synthetic samples. They are not paired "
-    "measurements from identical experimental runs."
+    "Each group contains synthetic observations. "
+    "The baseline and AO-LACCP samples are independently "
+    "generated and are not paired experimental measurements."
 )
 
 # ============================================================
-# 10. STATISTICAL TESTING
+# 10. HYPOTHESIS TESTING
 # ============================================================
 
 st.header("3. Hypothesis Testing")
 
 st.markdown(
     """
-    Welch's independent-samples t-test is used to compare
-    group means without assuming equal variances.
+    Welch's independent-samples t-test compares group means
+    without assuming equal population variances.
 
-    The significance threshold is 0.05. Cohen's d is reported
-    as a standardized effect-size estimate.
+    The significance threshold is 0.05. Cohen's d provides
+    a standardized effect-size estimate.
     """
 )
 
@@ -331,15 +316,12 @@ def hypothesis_test(
     baseline_values,
     direction
 ):
-    """
-    Compare independent synthetic samples using Welch's t-test.
+    """Compare independent samples and report their statistics."""
 
-    direction:
-        'lower' means lower AO-LACCP values are desirable.
-        'higher' means higher AO-LACCP values are desirable.
-    """
+    ao_values = np.asarray(
+        ao_values, dtype=float
+    )
 
-    ao_values = np.asarray(ao_values, dtype=float)
     baseline_values = np.asarray(
         baseline_values, dtype=float
     )
@@ -358,7 +340,6 @@ def hypothesis_test(
         baseline_values, ddof=1
     )
 
-    # Pooled-SD Cohen's d.
     pooled_variance = (
         (len(ao_values) - 1) * ao_sd ** 2
         + (len(baseline_values) - 1)
@@ -384,16 +365,12 @@ def hypothesis_test(
     else:
         relative_change = np.nan
 
-    # Mean direction and statistical significance
-    # are evaluated separately.
     if direction == "lower":
         favors_ao = ao_mean < baseline_mean
     else:
         favors_ao = ao_mean > baseline_mean
 
-    statistically_significant = (
-        test.pvalue < 0.05
-    )
+    significant = test.pvalue < 0.05
 
     st.subheader(title)
 
@@ -426,23 +403,20 @@ def hypothesis_test(
         f"Cohen's d: {cohen_d:.4f}"
     )
 
-    if statistically_significant and favors_ao:
-
+    if significant and favors_ao:
         st.success(
             "The difference is statistically significant "
             "at the 0.05 level, and the observed mean "
             "favors AO-LACCP."
         )
 
-    elif statistically_significant and not favors_ao:
-
+    elif significant and not favors_ao:
         st.warning(
             "The difference is statistically significant, "
             "but the observed mean does not favor AO-LACCP."
         )
 
     else:
-
         st.info(
             "The difference did not reach the "
             "0.05 significance threshold."
@@ -456,12 +430,12 @@ def hypothesis_test(
         "p-value": test.pvalue,
         "Cohen's d": cohen_d,
         "Relative Change (%)": relative_change,
-        "Significant (p < 0.05)": statistically_significant,
+        "Significant (p < 0.05)": significant,
         "Direction Favors AO-LACCP": favors_ao
     }
 
 
-# H1: Risk reduction
+# H1: Cyber risk reduction
 h1 = hypothesis_test(
     "H1: Cyber Risk Reduction",
     df["Risk_AO_LACCP"],
@@ -469,7 +443,7 @@ h1 = hypothesis_test(
     "lower"
 )
 
-# H2: Cryptographic agility
+# H2: Cryptographic agility improvement
 h2 = hypothesis_test(
     "H2: Cryptographic Agility",
     df["Agility_AO_LACCP"],
@@ -532,6 +506,8 @@ def make_boxplot(
     )
 
 
+# IMPORTANT: Each call supplies all four required arguments.
+
 make_boxplot(
     "Risk_Baseline",
     "Risk_AO_LACCP",
@@ -542,17 +518,19 @@ make_boxplot(
 make_boxplot(
     "Latency_Baseline",
     "Latency_AO_LACCP",
+    "Latency Comparison",
     "Latency (milliseconds)"
 )
 
 make_boxplot(
     "Agility_Baseline",
     "Agility_AO_LACCP",
+    "Cryptographic Agility Comparison",
     "Cryptographic Agility Index"
 )
 
 # ============================================================
-# 12. STATISTICAL SUMMARY TABLE
+# 12. STATISTICAL SUMMARY
 # ============================================================
 
 st.header("5. Statistical Summary")
@@ -607,17 +585,17 @@ st.dataframe(
 st.subheader("Risk Variability")
 
 st.write(
-    "Baseline risk SD: "
+    "Baseline risk standard deviation: "
     f"{df['Risk_Baseline'].std(ddof=1):.4f}"
 )
 
 st.write(
-    "AO-LACCP risk SD: "
+    "AO-LACCP risk standard deviation: "
     f"{df['Risk_AO_LACCP'].std(ddof=1):.4f}"
 )
 
 # ============================================================
-# 14. SCENARIO AND CONFIGURATION SUMMARY
+# 14. SCENARIO AND CONFIGURATION
 # ============================================================
 
 st.header("7. Scenario and Configuration")
@@ -626,19 +604,24 @@ st.write(f"**Selected scenario:** {scenario}")
 
 st.write(
     "**Cryptographic options:** "
-    + (", ".join(crypto_choice) if crypto_choice else "None selected")
+    + (
+        ", ".join(crypto_choice)
+        if crypto_choice else "None selected"
+    )
 )
 
 st.write(
     "**Compliance frameworks:** "
-    + (", ".join(policy_choice) if policy_choice else "None selected")
+    + (
+        ", ".join(policy_choice)
+        if policy_choice else "None selected"
+    )
 )
 
 st.warning(
-    "Cryptographic and compliance selections are currently "
-    "displayed as configuration inputs. They do not yet "
-    "change the simulation's cryptographic operations or "
-    "enforce compliance controls."
+    "The cryptographic and compliance selections are currently "
+    "displayed as configuration inputs. They do not yet change "
+    "the simulated cryptographic operations or enforce compliance."
 )
 
 # ============================================================
@@ -650,136 +633,137 @@ st.header("8. AO-LACCP Security Recommendations")
 if scenario == "Quantum Attack":
 
     st.error(
-        "Recommendation: evaluate post-quantum cryptography "
-        "(PQC) or hybrid cryptography, test interoperability, "
-        "and develop a cryptographic migration plan."
+        "Evaluate post-quantum cryptography (PQC) or hybrid "
+        "cryptography, interoperability, and migration readiness."
     )
 
 elif scenario == "Adversarial Signal":
 
     st.warning(
-        "Recommendation: strengthen threat validation, "
-        "monitoring, model robustness, and incident response."
+        "Strengthen threat validation, monitoring, model "
+        "robustness, and incident response."
     )
 
 elif scenario == "Latency Spike":
 
     st.info(
-        "Recommendation: evaluate latency-aware policy "
-        "selection and measure end-to-end processing delays."
+        "Evaluate latency-aware policy selection and measure "
+        "end-to-end processing delays."
     )
 
 else:
 
     st.success(
-        "Recommendation: maintain continuous monitoring, "
-        "review access controls, and validate security policies."
+        "Maintain continuous monitoring, review access controls, "
+        "and validate security policies."
     )
 
 if not crypto_choice:
-    st.warning("No cryptographic option has been selected.")
+    st.warning(
+        "No cryptographic option has been selected."
+    )
 
 if not policy_choice:
-    st.warning("No compliance framework has been selected.")
+    st.warning(
+        "No compliance framework has been selected."
+    )
 
 # ============================================================
-# 16. AO-LACCP CONTRIBUTIONS AND DESIGN TRACEABILITY
+# 16. AO-LACCP CONTRIBUTIONS
 # ============================================================
 
-st.header("9. AO-LACCP Contributions and Design Traceability")
-
-st.markdown(
-    """
-    **Integrated Architecture**
-
-    Conceptual integration of AI-orchestrated decision logic,
-    cryptographic agility, Zero Trust, and governance.
-
-    **Adaptive Risk Intelligence**
-
-    Simulation of baseline and AO-LACCP risk-score distributions.
-
-    **Latency-Aware Decisions**
-
-    Comparison of simulated processing latency in milliseconds.
-
-    **Cryptographic Agility**
-
-    Comparison of baseline and AO-LACCP agility-index values.
-
-    **Post-Quantum Readiness**
-
-    The Quantum Attack scenario illustrates a possible evaluation
-    context for PQC migration and hybrid cryptography. It does
-    not demonstrate resistance to actual quantum attacks.
-
-    **Explainable AI**
-
-    Explainability should be validated using documented decision
-    logic, traceable inputs, and explanations of security actions.
-
-    **Zero Trust**
-
-    Zero Trust enforcement requires explicit access-control,
-    identity, device, and contextual-policy logic to be implemented
-    and tested.
-
-    **Governance Integration**
-
-    The interface provides ISO 27001, NIST, and GDPR selections.
-    These selections alone do not establish compliance.
-
-    **System Evaluation**
-
-    Simulation outputs, statistical comparisons, and limitations
-    provide evidence for evaluating the research artifact.
-
-    **Continuous Adaptation**
-
-    A genuine feedback loop requires implemented logic that uses
-    observed outcomes to update subsequent decisions.
-    """
+st.header(
+    "9. AO-LACCP Contributions and Design Traceability"
 )
+
+with st.expander(
+    "Integrated Architecture",
+    expanded=True
+):
+    st.write(
+        "Conceptual integration of AI-orchestrated decision "
+        "logic, cryptographic agility, Zero Trust, and governance."
+    )
+
+with st.expander("Adaptive Risk Intelligence"):
+    st.write(
+        "Comparison of simulated baseline and AO-LACCP "
+        "cyber-risk score distributions."
+    )
+
+with st.expander("Latency-Aware Decisions"):
+    st.write(
+        "Comparison of simulated processing latency in milliseconds."
+    )
+
+with st.expander("Cryptographic Agility"):
+    st.write(
+        "Comparison of baseline and AO-LACCP agility-index values. "
+        "This index requires a documented operational definition."
+    )
+
+with st.expander("Post-Quantum Readiness"):
+    st.write(
+        "The Quantum Attack scenario illustrates a possible "
+        "evaluation context for PQC migration. It does not "
+        "demonstrate resistance to actual quantum attacks."
+    )
+
+with st.expander("Explainable AI and Zero Trust"):
+    st.write(
+        "These capabilities require implemented decision "
+        "explanations, traceable inputs, identity checks, and "
+        "contextual access-control logic to be validated."
+    )
+
+with st.expander("Governance and Continuous Adaptation"):
+    st.write(
+        "Framework selections alone do not establish compliance. "
+        "Continuous adaptation requires implemented feedback "
+        "logic that updates subsequent decisions."
+    )
 
 # ============================================================
 # 17. DESIGN SCIENCE RESEARCH JUSTIFICATION
 # ============================================================
 
-st.header("10. Design Science Research (DSR) Justification")
+st.header(
+    "10. Design Science Research (DSR) Justification"
+)
 
 st.markdown(
     """
     AO-LACCP is presented as a Design Science Research artifact
-    intended to address cybersecurity risk management challenges
+    intended to address adaptive cyber-risk management challenges
     in banking and FinTech environments.
 
-    Its evaluation follows four broad activities:
+    **Problem identification:** Identify limitations in adaptive
+    cyber-risk management.
 
-    1. **Problem identification:** identify limitations in
-       adaptive cyber-risk management.
+    **Artifact design:** Specify the architecture, constructs,
+    decision logic, and evaluation metrics.
 
-    2. **Artifact design:** specify the architecture, constructs,
-       decision logic, and evaluation metrics.
+    **Implementation:** Implement the computational prototype
+    and configurable simulation.
 
-    3. **Implementation:** implement the computational prototype
-       and configurable simulation.
-
-    4. **Evaluation:** compare simulated risk, latency, and
-       cryptographic-agility metrics under documented assumptions.
+    **Evaluation:** Compare simulated risk, latency, and
+    cryptographic-agility metrics under documented assumptions.
 
     The results displayed here are synthetic computational
-    results. They should not be represented as live financial
-    institution measurements or as proof of production readiness.
+    results. They are not live financial-institution measurements
+    or proof of production readiness.
     """
 )
 
 # ============================================================
-# 18. EXPORT SIMULATION DATA
+# 18. EXPORT RESULTS
 # ============================================================
 
 st.header("11. Export Results")
 
-csv_data = df.to_csv(index=False).encode("utf-8")
+csv_data = df.to_csv(
+    index=False
+).encode("utf-8")
 
 st.download_button(
     label="Download Simulation Dataset (CSV)",
@@ -788,7 +772,9 @@ st.download_button(
     mime="text/csv"
 )
 
-summary_csv = summary.to_csv(index=False).encode("utf-8")
+summary_csv = summary.to_csv(
+    index=False
+).encode("utf-8")
 
 st.download_button(
     label="Download Statistical Summary (CSV)",
@@ -808,6 +794,6 @@ st.caption(
 )
 
 st.caption(
-    "Evaluation results depend on the specified simulation "
-    "assumptions, selected scenario, and random seed."
+    "Results depend on the specified simulation assumptions, "
+    "selected scenario, and random seed."
 )
