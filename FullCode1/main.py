@@ -1,1465 +1,506 @@
-import streamlit as st
+"""AO-LACCP Full Framework — fair-comparison simulation scaffold.
+
+IMPORTANT RESEARCH LIMITATION
+This is a transparent synthetic simulation, not a validated model of a deployed
+cybersecurity system. The policy rules and outcome coefficients are illustrative
+assumptions. Replace the AO-LACCP policy function with the actual artifact logic,
+justify/calibrate coefficients, and run sensitivity/validation studies before using
+outputs as dissertation evidence of effectiveness.
+"""
+from __future__ import annotations
+
+import io
+from typing import Dict, Tuple
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-from scipy import stats
-from sklearn.linear_model import LinearRegression
+import streamlit as st
 from matplotlib.backends.backend_pdf import PdfPages
-import io
+from scipy import stats
 
-# ============================================================
-# CONFIG
-# ============================================================
-
-st.set_page_config(
-    page_title="AO-LACCP Full Framework",
-    layout="wide"
+# -----------------------------------------------------------------------------
+# Page and controls
+# -----------------------------------------------------------------------------
+st.set_page_config(page_title="AO-LACCP Full Framework — Fair Comparison", layout="wide")
+st.title("AO-LACCP: AI-Orchestrated Latency-Aware Cryptographic Control Plane")
+st.caption("Fair-comparison simulation scaffold for Design Science Research (DSR) evaluation")
+st.warning(
+    "Research integrity notice: this dashboard uses synthetic inputs and explicitly configured "
+    "policy/outcome assumptions. It does not establish real-world effectiveness. The AO-LACCP "
+    "policy below is a transparent adaptive rule-based placeholder—not a trained AI model and "
+    "not the separate Q-learning demonstration."
 )
 
-st.title(
-    "🧠 AO-LACCP: AI-Orchestrated Adaptive Cryptographic Agility Framework"
-)
-
-st.caption(
-    "AI-Orchestrated Latency-Aware Cryptographic Control Plane "
-    "for Adaptive Cyber Resilience"
-)
-
-# ============================================================
-# SIDEBAR
-# ============================================================
-
-st.sidebar.header("⚙️ AO-LACCP Governance & Security Control Panel")
-
-download_data = st.sidebar.checkbox(
-    "📥 Enable Dataset Download",
-    value=False
-)
-
-save_output = st.sidebar.checkbox(
-    "💾 Save Results",
-    value=False
-)
-
-rl_enabled = st.sidebar.checkbox(
-    "🔁 Enable Reinforcement Learning",
-    value=True
-)
-
-# ============================================================
-# CASE STUDY / THREAT SCENARIO
-# ============================================================
-
-threat_scenario = st.sidebar.selectbox(
-    "🎯 Case Study / Threat Scenario",
-    [
-        "Normal Operating Conditions",
-        "Latency Spike",
-        "Adversarial Signal",
-        "Compliance Drift",
-        "Combined Multi-Threat"
-    ]
-)
-
-st.sidebar.markdown("---")
-
-# ============================================================
-# GOVERNANCE
-# ============================================================
-
-governance = st.sidebar.multiselect(
-    "🏛 Governance Frameworks",
-    [
-        "ISO 27001",
-        "GDPR",
-        "PCI DSS",
-        "NIST CSF",
-        "SOX"
-    ],
-    default=[
-        "ISO 27001",
-        "NIST CSF"
-    ]
-)
-
-# ============================================================
-# CRYPTOGRAPHIC MODEL
-# ============================================================
-
-crypto_model = st.sidebar.selectbox(
-    "🔐 Cryptographic Model",
-    [
-        "RSA",
-        "ECC",
-        "PQC",
-        "Hybrid"
-    ]
-)
-
-# ============================================================
-# COMPLIANCE
-# ============================================================
-
-compliance = st.sidebar.selectbox(
-    "📜 Compliance Level",
-    [
-        "Low",
-        "Medium",
-        "High",
-        "Very High"
-    ]
-)
-
-# ============================================================
-# DISPLAY SELECTED SCENARIO
-# ============================================================
+with st.sidebar:
+    st.header("Simulation Controls")
+    random_seed = int(st.number_input("Random seed", min_value=0, max_value=2_147_483_647, value=42, step=1))
+    n = int(st.number_input("Observations per run", min_value=10, max_value=5000, value=100, step=10))
+    n_repeats = int(st.number_input("Repeated simulation runs", min_value=2, max_value=500, value=30, step=1))
+    threat_scenario = st.selectbox(
+        "Threat scenario",
+        ["Normal Operating Conditions", "Latency Spike", "Adversarial Signal", "Compliance Drift", "Combined Multi-Threat"],
+    )
+    compliance_level = st.selectbox("Compliance-pressure setting", ["Low", "Medium", "High", "Very High"], index=1)
+    crypto_model = st.selectbox("Cryptographic mode (shared by both policies)", ["RSA", "ECC", "PQC", "Hybrid"], index=1)
+    governance = st.multiselect(
+        "Governance references (metadata only)",
+        ["ISO 27001", "GDPR", "PCI DSS", "NIST CSF", "SOX"],
+        default=["ISO 27001", "NIST CSF"],
+    )
+    rl_enabled = st.checkbox("Show separate illustrative Q-learning demo", value=False)
+    show_raw = st.checkbox("Show synthetic observation-level data", value=False)
 
 st.info(
-    f"**Selected Case Study:** {threat_scenario}  \n"
-    f"**Cryptographic Model:** {crypto_model}  \n"
-    f"**Compliance Level:** {compliance}  \n"
-    f"**Governance Frameworks:** "
-    f"{', '.join(governance) if governance else 'None selected'}"
+    f"**Scenario:** {threat_scenario}  |  **Seed:** {random_seed}  |  **Observations/run:** {n}  |  "
+    f"**Repeated runs:** {n_repeats}  |  **Cryptographic mode:** {crypto_model}"
 )
 
-# ============================================================
-# BUILT-IN SYNTHETIC DATASET
-# ============================================================
-#
-# IMPORTANT:
-# There is NO CSV upload functionality.
-# The application always uses this controlled synthetic dataset.
-#
-# This prevents KeyError problems caused by uploaded datasets
-# missing AO-LACCP analytical variables.
-# ============================================================
+# -----------------------------------------------------------------------------
+# Transparent assumptions — intentionally visible in the app/report
+# -----------------------------------------------------------------------------
+SCENARIO_ADJUSTMENTS: Dict[str, Dict[str, float]] = {
+    "Normal Operating Conditions": {"threat": 0.00, "latency_pressure": 0.00, "compliance_pressure": 0.00},
+    "Latency Spike": {"threat": 0.00, "latency_pressure": 0.35, "compliance_pressure": 0.00},
+    "Adversarial Signal": {"threat": 0.25, "latency_pressure": 0.00, "compliance_pressure": 0.00},
+    "Compliance Drift": {"threat": 0.00, "latency_pressure": 0.00, "compliance_pressure": 0.30},
+    "Combined Multi-Threat": {"threat": 0.25, "latency_pressure": 0.35, "compliance_pressure": 0.30},
+}
+COMPLIANCE_LEVEL_PRESSURE = {"Low": 0.10, "Medium": 0.30, "High": 0.55, "Very High": 0.75}
+CRYPTO_LATENCY_OVERHEAD_MS = {"RSA": 4.0, "ECC": 3.0, "PQC": 12.0, "Hybrid": 8.0}
 
-np.random.seed(42)
+st.subheader("Model assumptions and operational definitions")
+st.markdown(
+    "- **Shared inputs:** each synthetic observation is generated once and passed to both policies.\n"
+    "- **Baseline policy:** fixed thresholds based only on threat intensity.\n"
+    "- **AO-LACCP placeholder policy:** transparent rule-based score using threat intensity, latency pressure, and compliance pressure.\n"
+    "- **Common outcome equations:** both policies use the same risk, latency, and agility-proxy formulas; only the selected action differs.\n"
+    "- **Agility metric:** an illustrative response/agility proxy, not measured cryptographic switching time or proof of PQC readiness.\n"
+    "- **Governance selectors:** recorded as report metadata; this prototype does not perform ISO/NIST/GDPR/PCI DSS/SOX compliance validation."
+)
+assumptions_table = pd.DataFrame([
+    {"Parameter": "Risk mitigation — Monitor", "Value": 0.02, "Meaning": "Illustrative reduction in normalized risk score"},
+    {"Parameter": "Risk mitigation — Mitigate", "Value": 0.10, "Meaning": "Illustrative reduction in normalized risk score"},
+    {"Parameter": "Risk mitigation — Escalate", "Value": 0.18, "Meaning": "Illustrative reduction in normalized risk score"},
+    {"Parameter": "Latency cost — Monitor", "Value": 2.0, "Meaning": "Added milliseconds"},
+    {"Parameter": "Latency cost — Mitigate", "Value": 10.0, "Meaning": "Added milliseconds"},
+    {"Parameter": "Latency cost — Escalate", "Value": 22.0, "Meaning": "Added milliseconds"},
+    {"Parameter": "Crypto-mode overhead", "Value": CRYPTO_LATENCY_OVERHEAD_MS[crypto_model], "Meaning": f"Shared overhead for {crypto_model} mode (ms)"},
+])
+st.dataframe(assumptions_table, use_container_width=True, hide_index=True)
 
-n = 30
-
-df = pd.DataFrame({
-    "Baseline_Risk": np.random.normal(
-        0.55,
-        0.08,
-        n
-    ),
-
-    "AO-LACCP_Risk": np.random.normal(
-        0.32,
-        0.05,
-        n
-    ),
-
-    "Baseline_Latency": np.random.normal(
-        210,
-        25,
-        n
-    ),
-
-    "AO-LACCP_Latency": np.random.normal(
-        120,
-        15,
-        n
-    ),
-
-    "Baseline_Agility": np.random.normal(
-        1.0,
-        0.2,
-        n
-    ),
-
-    "AO-LACCP_Agility": np.random.normal(
-        1.8,
-        0.25,
-        n
+# -----------------------------------------------------------------------------
+# Scenario generator: one common row per experimental case
+# -----------------------------------------------------------------------------
+def make_shared_scenarios(seed: int, scenario: str, observations: int, compliance_setting: str) -> pd.DataFrame:
+    """Generate the shared synthetic cases; no system-specific outcome is generated here."""
+    rng = np.random.default_rng(seed)
+    adj = SCENARIO_ADJUSTMENTS[scenario]
+    threat = np.clip(rng.beta(2.2, 2.0, observations) + adj["threat"], 0.0, 1.0)
+    latency_pressure = np.clip(rng.beta(1.8, 3.2, observations) + adj["latency_pressure"], 0.0, 1.0)
+    compliance_pressure = np.clip(
+        0.55 * rng.beta(2.0, 2.5, observations)
+        + 0.45 * COMPLIANCE_LEVEL_PRESSURE[compliance_setting]
+        + adj["compliance_pressure"], 0.0, 1.0
     )
-})
-
-# ============================================================
-# APPLY CASE-STUDY EFFECTS
-# ============================================================
-
-if threat_scenario == "Latency Spike":
-
-    df["Baseline_Latency"] += 50
-    df["AO-LACCP_Latency"] += 15
-
-elif threat_scenario == "Adversarial Signal":
-
-    df["Baseline_Risk"] += 0.08
-    df["AO-LACCP_Risk"] += 0.03
-
-elif threat_scenario == "Compliance Drift":
-
-    df["Baseline_Agility"] -= 0.05
-    df["AO-LACCP_Agility"] -= 0.02
-
-elif threat_scenario == "Combined Multi-Threat":
-
-    df["Baseline_Risk"] += 0.08
-    df["AO-LACCP_Risk"] += 0.03
-
-    df["Baseline_Latency"] += 50
-    df["AO-LACCP_Latency"] += 15
-
-    df["Baseline_Agility"] -= 0.05
-    df["AO-LACCP_Agility"] -= 0.02
-
-# ============================================================
-# DESCRIPTIVE SAMPLE
-# ============================================================
-
-st.subheader("📌 Descriptive Sample")
-
-st.dataframe(
-    df.head(),
-    use_container_width=True
-)
-
-st.caption(
-    f"Synthetic demonstration dataset: {n} observations."
-)
-
-# ============================================================
-# DESCRIPTIVE STATISTICS
-# ============================================================
-
-st.subheader("📊 Descriptive Statistics Table")
-
-desc_table = pd.DataFrame({
-    "Metric": [
-        "Cyber Risk",
-        "Cyber Risk",
-        "Cryptographic Agility",
-        "Cryptographic Agility",
-        "Response Latency",
-        "Response Latency"
-    ],
-
-    "Approach": [
-        "AO-LACCP",
-        "Baseline",
-        "AO-LACCP",
-        "Baseline",
-        "AO-LACCP",
-        "Baseline"
-    ],
-
-    "Mean": [
-        df["AO-LACCP_Risk"].mean(),
-        df["Baseline_Risk"].mean(),
-        df["AO-LACCP_Agility"].mean(),
-        df["Baseline_Agility"].mean(),
-        df["AO-LACCP_Latency"].mean(),
-        df["Baseline_Latency"].mean()
-    ],
-
-    "Std Dev": [
-        df["AO-LACCP_Risk"].std(),
-        df["Baseline_Risk"].std(),
-        df["AO-LACCP_Agility"].std(),
-        df["Baseline_Agility"].std(),
-        df["AO-LACCP_Latency"].std(),
-        df["Baseline_Latency"].std()
-    ],
-
-    "N": [
-        n,
-        n,
-        n,
-        n,
-        n,
-        n
-    ]
-})
-
-st.dataframe(
-    desc_table,
-    use_container_width=True
-)
-
-# ============================================================
-# HELPER FUNCTIONS
-# ============================================================
-
-def cohens_d(x, y):
-    """
-    Calculate Cohen's d using pooled sample standard deviation.
-    """
-
-    x = np.asarray(x, dtype=float)
-    y = np.asarray(y, dtype=float)
-
-    nx = len(x)
-    ny = len(y)
-
-    pooled_sd = np.sqrt(
-        (
-            (nx - 1) * np.var(x, ddof=1)
-            +
-            (ny - 1) * np.var(y, ddof=1)
-        )
-        /
-        (nx + ny - 2)
+    initial_risk = np.clip(
+        0.12 + 0.48 * threat + 0.20 * compliance_pressure + rng.normal(0.0, 0.035, observations),
+        0.0, 1.0,
     )
+    base_latency = np.clip(rng.normal(180.0, 22.0, observations), 80.0, None)
+    # The same disturbance terms are reused for both policies to preserve pairing.
+    risk_noise = rng.normal(0.0, 0.018, observations)
+    latency_noise = rng.normal(0.0, 4.0, observations)
+    return pd.DataFrame({
+        "Case_ID": np.arange(1, observations + 1),
+        "Initial_Risk": initial_risk,
+        "Threat_Intensity": threat,
+        "Latency_Pressure": latency_pressure,
+        "Compliance_Pressure": compliance_pressure,
+        "Base_Latency_ms": base_latency,
+        "Shared_Risk_Noise": risk_noise,
+        "Shared_Latency_Noise_ms": latency_noise,
+    })
 
-    if pooled_sd == 0:
-        return 0.0
+# -----------------------------------------------------------------------------
+# Policies and shared outcome model
+# -----------------------------------------------------------------------------
+ACTION_LEVEL = {"Monitor": 0, "Mitigate": 1, "Escalate": 2}
+RISK_MITIGATION = {"Monitor": 0.02, "Mitigate": 0.10, "Escalate": 0.18}
+ACTION_LATENCY_MS = {"Monitor": 2.0, "Mitigate": 10.0, "Escalate": 22.0}
+AGILITY_PROXY = {"Monitor": 0.25, "Mitigate": 0.60, "Escalate": 0.90}
 
-    return (
-        np.mean(x) - np.mean(y)
-    ) / pooled_sd
+
+def baseline_policy(row: pd.Series) -> str:
+    """Simple fixed-threshold baseline; intentionally transparent."""
+    if row["Threat_Intensity"] >= 0.70:
+        return "Escalate"
+    if row["Threat_Intensity"] >= 0.40:
+        return "Mitigate"
+    return "Monitor"
 
 
-def eta_squared(f, df1, df2):
-
-    denominator = (
-        f * df1
-        +
-        df2
+def ao_laccp_adaptive_rule_policy(row: pd.Series) -> str:
+    """Rule-based adaptive placeholder; replace with the actual artifact decision logic."""
+    score = (
+        0.50 * row["Threat_Intensity"]
+        + 0.20 * row["Latency_Pressure"]
+        + 0.30 * row["Compliance_Pressure"]
     )
-
-    if denominator == 0:
-        return 0.0
-
-    return (
-        f * df1
-    ) / denominator
-
-
-def decision(p):
-
-    if p < 0.05:
-        return "Reject H₀"
-
-    return "Fail to Reject H₀"
+    # Latency pressure is an input to the policy, but the same latency costs are
+    # charged to both systems by the shared outcome function below.
+    if score >= 0.67:
+        return "Escalate"
+    if score >= 0.38:
+        return "Mitigate"
+    return "Monitor"
 
 
-def significance_text(p):
-
-    if p < 0.001:
-        return "p < .001"
-
-    return f"p = {p:.5f}"
-
-
-# ============================================================
-# HYPOTHESIS TESTING FUNCTION
-# ============================================================
-
-def plot_h(
-    title,
-    ao_column,
-    baseline_column,
-    ylabel,
-    fig_num
-):
-
-    ao_data = df[ao_column]
-    baseline_data = df[baseline_column]
-
-    # One-way ANOVA
-    f_value, p_value = stats.f_oneway(
-        ao_data,
-        baseline_data
+def evaluate_policy(shared: pd.DataFrame, policy_fn, crypto_mode: str, label: str) -> pd.DataFrame:
+    """Apply one policy to common cases, then compute outcomes with common equations."""
+    out = shared.copy()
+    out["Action"] = out.apply(policy_fn, axis=1)
+    crypto_overhead = CRYPTO_LATENCY_OVERHEAD_MS[crypto_mode]
+    out[f"{label}_Risk"] = np.clip(
+        out["Initial_Risk"] - out["Action"].map(RISK_MITIGATION) + out["Shared_Risk_Noise"], 0.0, 1.0
     )
-
-    df1 = 1
-
-    df2 = (
-        len(ao_data)
-        +
-        len(baseline_data)
-        -
-        2
+    out[f"{label}_Latency_ms"] = np.clip(
+        out["Base_Latency_ms"]
+        + 45.0 * out["Latency_Pressure"]
+        + out["Action"].map(ACTION_LATENCY_MS)
+        + crypto_overhead
+        + out["Shared_Latency_Noise_ms"],
+        0.0, None,
     )
-
-    # Effect size
-    d_value = cohens_d(
-        ao_data,
-        baseline_data
-    )
-
-    eta_value = eta_squared(
-        f_value,
-        df1,
-        df2
-    )
-
-    # ========================================================
-    # GRAPH
-    # ========================================================
-
-    fig, ax = plt.subplots(
-        figsize=(7, 5)
-    )
-
-    ax.bar(
-        ["Baseline", "AO-LACCP"],
-        [
-            baseline_data.mean(),
-            ao_data.mean()
-        ],
-        yerr=[
-            baseline_data.std(),
-            ao_data.std()
-        ],
-        capsize=10
-    )
-
-    ax.set_title(
-        f"Figure {fig_num}: {title}"
-    )
-
-    ax.set_ylabel(
-        ylabel
-    )
-
-    ax.grid(
-        axis="y",
-        alpha=0.25
-    )
-
-    plt.tight_layout()
-
-    st.pyplot(
-        fig,
-        clear_figure=False
-    )
-
-    # ========================================================
-    # APA REPORTING
-    # ========================================================
-
-    st.markdown(
-        f"""
-### {title} — APA Reporting
-
-**F({df1}, {df2}) = {f_value:.2f}, {significance_text(p_value)}**
-
-**Cohen's d = {d_value:.2f}**
-
-**Eta squared (η²) = {eta_value:.3f}**
-
-**Decision:** {decision(p_value)}
-"""
-    )
-
-    return (
-        f_value,
-        p_value,
-        d_value,
-        eta_value,
-        fig
-    )
-
-
-# ============================================================
-# HYPOTHESES
-# ============================================================
-
-st.header("🧪 Hypothesis Testing")
-
-# ============================================================
-# H1 — CYBER RISK
-# ============================================================
-
-h1_f, h1_p, d1, eta1, fig_h1 = plot_h(
-    "Cyber Risk Comparison",
-    "AO-LACCP_Risk",
-    "Baseline_Risk",
-    "Risk Score",
-    "4.2"
-)
-
-# ============================================================
-# H2 — CRYPTOGRAPHIC AGILITY
-# ============================================================
-
-h2_f, h2_p, d2, eta2, fig_h2 = plot_h(
-    "Cryptographic Agility Comparison",
-    "AO-LACCP_Agility",
-    "Baseline_Agility",
-    "Agility",
-    "4.3"
-)
-
-# ============================================================
-# H3 — RESPONSE LATENCY
-# ============================================================
-
-h3_f, h3_p, d3, eta3, fig_h3 = plot_h(
-    "Response Latency Comparison",
-    "AO-LACCP_Latency",
-    "Baseline_Latency",
-    "Latency (ms)",
-    "4.4"
-)
-
-# ============================================================
-# SUMMARY TABLE
-# ============================================================
-
-st.subheader("📋 Hypothesis Summary")
-
-summary = pd.DataFrame({
-    "Hypothesis": [
-        "H1 Cyber Risk",
-        "H2 Agility",
-        "H3 Latency"
-    ],
-
-    "F-Value": [
-        h1_f,
-        h2_f,
-        h3_f
-    ],
-
-    "P-Value": [
-        h1_p,
-        h2_p,
-        h3_p
-    ],
-
-    "Cohen_d": [
-        d1,
-        d2,
-        d3
-    ],
-
-    "Eta_Squared": [
-        eta1,
-        eta2,
-        eta3
-    ],
-
-    "Decision": [
-        decision(h1_p),
-        decision(h2_p),
-        decision(h3_p)
-    ]
-})
-
-st.dataframe(
-    summary,
-    use_container_width=True
-)
-
-# ============================================================
-# ONE-WAY ANOVA RESULTS
-# ============================================================
-
-st.subheader("📊 One-Way ANOVA Results")
-
-def between_ss(x, y):
-
-    mean_x = np.mean(x)
-    mean_y = np.mean(y)
-
-    grand_mean = (
-        len(x) * mean_x
-        +
-        len(y) * mean_y
-    ) / (
-        len(x) + len(y)
-    )
-
-    return (
-        len(x) * (mean_x - grand_mean) ** 2
-        +
-        len(y) * (mean_y - grand_mean) ** 2
-    )
-
-
-anova_table = pd.DataFrame({
-
-    "Metric": [
-        "Cyber Risk",
-        "Cryptographic Agility",
-        "Response Latency"
-    ],
-
-    "Between SS": [
-        between_ss(
-            df["AO-LACCP_Risk"],
-            df["Baseline_Risk"]
-        ),
-
-        between_ss(
-            df["AO-LACCP_Agility"],
-            df["Baseline_Agility"]
-        ),
-
-        between_ss(
-            df["AO-LACCP_Latency"],
-            df["Baseline_Latency"]
-        )
-    ],
-
-    "df (Between)": [
-        1,
-        1,
-        1
-    ],
-
-    "F-Value": [
-        h1_f,
-        h2_f,
-        h3_f
-    ],
-
-    "p-value": [
-        h1_p,
-        h2_p,
-        h3_p
-    ],
-
-    "df (Within)": [
-        2 * n - 2,
-        2 * n - 2,
-        2 * n - 2
-    ]
-})
-
-st.dataframe(
-    anova_table,
-    use_container_width=True
-)
-
-# ============================================================
-# REGRESSION
-# ============================================================
-
-st.subheader("📉 Regression Analysis")
-
-X = df[
-    [
-        "AO-LACCP_Agility",
-        "AO-LACCP_Latency"
-    ]
-]
-
-y = df[
-    "AO-LACCP_Risk"
-]
-
-model = LinearRegression()
-
-model.fit(
-    X,
-    y
-)
-
-y_pred = model.predict(
-    X
-)
-
-r2 = model.score(
-    X,
-    y
-)
-
-st.metric(
-    "R² Score",
-    f"{r2:.4f}"
-)
-
-# ============================================================
-# REGRESSION COEFFICIENTS
-# ============================================================
-
-regression_results = pd.DataFrame({
-
-    "Predictor": [
-        "AO-LACCP Agility",
-        "AO-LACCP Latency"
-    ],
-
-    "Coefficient": [
-        model.coef_[0],
-        model.coef_[1]
-    ]
-})
-
-st.dataframe(
-    regression_results,
-    use_container_width=True
-)
-
-st.write(
-    "Regression Intercept:",
-    model.intercept_
-)
-
-# ============================================================
-# ACTUAL VS PREDICTED GRAPH
-# ============================================================
-
-fig_regression, ax = plt.subplots(
-    figsize=(7, 5)
-)
-
-ax.scatter(
-    y,
-    y_pred
-)
-
-minimum = min(
-    y.min(),
-    y_pred.min()
-)
-
-maximum = max(
-    y.max(),
-    y_pred.max()
-)
-
-ax.plot(
-    [minimum, maximum],
-    [minimum, maximum],
-    "r--"
-)
-
-ax.set_title(
-    "Regression: Actual vs Predicted Cyber Risk"
-)
-
-ax.set_xlabel(
-    "Actual Risk"
-)
-
-ax.set_ylabel(
-    "Predicted Risk"
-)
-
-ax.grid(
-    alpha=0.25
-)
-
-plt.tight_layout()
-
-st.pyplot(
-    fig_regression
-)
-
-# ============================================================
-# RL / MDP
-# ============================================================
-
-if rl_enabled:
-
-    st.subheader(
-        "🔁 Markov Decision Process "
-        "(AO-LACCP Reinforcement Learning)"
-    )
-
-    states = [
-        "Low",
-        "Medium",
-        "High"
-    ]
-
-    actions = [
-        "Monitor",
-        "Mitigate",
-        "Escalate"
-    ]
-
-    transition = {
-
-        "Low": [
-            0.7,
-            0.25,
-            0.05
-        ],
-
-        "Medium": [
-            0.3,
-            0.5,
-            0.2
-        ],
-
-        "High": [
-            0.1,
-            0.4,
-            0.5
-        ]
+    out[f"{label}_Agility_Proxy"] = out["Action"].map(AGILITY_PROXY).astype(float)
+    return out
+
+
+def run_paired_simulation(seed: int, scenario: str, observations: int, compliance_setting: str, crypto_mode: str) -> pd.DataFrame:
+    shared = make_shared_scenarios(seed, scenario, observations, compliance_setting)
+    baseline = evaluate_policy(shared, baseline_policy, crypto_mode, "Baseline")
+    ao = evaluate_policy(shared, ao_laccp_adaptive_rule_policy, crypto_mode, "AO_LACCP")
+    # Assemble one row per shared case, preserving matched case IDs.
+    result = shared[["Case_ID", "Initial_Risk", "Threat_Intensity", "Latency_Pressure", "Compliance_Pressure", "Base_Latency_ms"]].copy()
+    result["Baseline_Action"] = baseline["Action"].to_numpy()
+    result["AO_LACCP_Action"] = ao["Action"].to_numpy()
+    for metric in ["Risk", "Latency_ms", "Agility_Proxy"]:
+        result[f"Baseline_{metric}"] = baseline[f"Baseline_{metric}"].to_numpy()
+        result[f"AO_LACCP_{metric}"] = ao[f"AO_LACCP_{metric}"].to_numpy()
+    return result
+
+
+df = run_paired_simulation(random_seed, threat_scenario, n, compliance_level, crypto_model)
+
+# -----------------------------------------------------------------------------
+# Statistics: paired differences and 95% t confidence intervals
+# -----------------------------------------------------------------------------
+def paired_statistics(baseline: pd.Series, ao: pd.Series, metric: str, favorable_direction: str) -> dict:
+    b = np.asarray(baseline, dtype=float)
+    a = np.asarray(ao, dtype=float)
+    raw_diff = a - b  # always AO-LACCP minus baseline
+    test = stats.ttest_rel(a, b, nan_policy="omit")
+    valid = raw_diff[np.isfinite(raw_diff)]
+    count = len(valid)
+    mean_raw = float(np.mean(valid)) if count else np.nan
+    sd_diff = float(np.std(valid, ddof=1)) if count > 1 else np.nan
+    se = sd_diff / np.sqrt(count) if count > 1 and np.isfinite(sd_diff) else np.nan
+    crit = stats.t.ppf(0.975, df=count - 1) if count > 1 else np.nan
+    raw_low = mean_raw - crit * se if np.isfinite(se) else np.nan
+    raw_high = mean_raw + crit * se if np.isfinite(se) else np.nan
+    # Positive oriented difference means favorable to AO-LACCP for every metric.
+    sign = -1.0 if favorable_direction == "lower" else 1.0
+    oriented = sign * valid
+    oriented_mean = float(np.mean(oriented)) if count else np.nan
+    oriented_low, oriented_high = (sign * raw_low, sign * raw_high) if sign > 0 else (-raw_high, -raw_low)
+    paired_d = mean_raw / sd_diff if np.isfinite(sd_diff) and not np.isclose(sd_diff, 0) else np.nan
+    return {
+        "Metric": metric,
+        "Baseline_Mean": float(np.mean(b)),
+        "Baseline_SD": float(np.std(b, ddof=1)),
+        "AO_LACCP_Mean": float(np.mean(a)),
+        "AO_LACCP_SD": float(np.std(a, ddof=1)),
+        "AO_minus_Baseline": mean_raw,
+        "Favorable_Difference": oriented_mean,
+        "Favorable_95CI_Lower": oriented_low,
+        "Favorable_95CI_Upper": oriented_high,
+        "Paired_t": float(test.statistic),
+        "p_raw": float(test.pvalue),
+        "Paired_dz": paired_d,
+        "N_Pairs": count,
     }
 
-    # ========================================================
-    # REWARD FUNCTION
-    # ========================================================
 
-    def reward(
-        state,
-        action
-    ):
+metric_specs = [
+    ("Cyber Risk", "Baseline_Risk", "AO_LACCP_Risk", "lower", "Risk score (0–1)"),
+    ("Response Latency", "Baseline_Latency_ms", "AO_LACCP_Latency_ms", "lower", "Latency (ms)"),
+    ("Cryptographic Agility Proxy", "Baseline_Agility_Proxy", "AO_LACCP_Agility_Proxy", "higher", "Illustrative index"),
+]
+results = pd.DataFrame([
+    paired_statistics(df[bcol], df[acol], name, direction)
+    for name, bcol, acol, direction, _ in metric_specs
+])
 
-        if (
-            state == "Low"
-            and
-            action == "Monitor"
-        ):
-            return 10
+# Holm adjustment for the three primary comparisons.
+def holm_adjust(p_values) -> np.ndarray:
+    p = np.asarray(p_values, dtype=float)
+    adjusted = np.full(len(p), np.nan)
+    valid_idx = np.where(np.isfinite(p))[0]
+    if not len(valid_idx):
+        return adjusted
+    order = valid_idx[np.argsort(p[valid_idx])]
+    m = len(order)
+    running = 0.0
+    for rank, idx in enumerate(order):
+        candidate = min(1.0, (m - rank) * p[idx])
+        running = max(running, candidate)
+        adjusted[idx] = running
+    return adjusted
 
-        if (
-            state == "Medium"
-            and
-            action == "Mitigate"
-        ):
-            return 20
+results["p_Holm"] = holm_adjust(results["p_raw"].to_numpy())
+results["Decision_Holm_alpha_0.05"] = np.where(results["p_Holm"] < 0.05, "Statistically significant", "Not statistically significant")
 
-        if (
-            state == "High"
-            and
-            action == "Escalate"
-        ):
-            return 30
 
-        return -5
+def p_format(value: float) -> str:
+    if not np.isfinite(value):
+        return "not estimable"
+    if value < 0.001:
+        return "< .001"
+    return f"= {value:.3f}"
 
-    # ========================================================
-    # Q TABLE
-    # ========================================================
 
-    Q = pd.DataFrame(
-        0.0,
-        index=states,
-        columns=actions
+def describe_difference(row: pd.Series) -> str:
+    return (
+        f"Mean AO-LACCP − baseline difference = {row['AO_minus_Baseline']:.4f}; "
+        f"95% CI for favorable-oriented difference = "
+        f"[{row['Favorable_95CI_Lower']:.4f}, {row['Favorable_95CI_Upper']:.4f}]; "
+        f"paired t({int(row['N_Pairs']) - 1}) = {row['Paired_t']:.3f}, "
+        f"raw p {p_format(row['p_raw'])}, Holm-adjusted p {p_format(row['p_Holm'])}."
     )
 
-    alpha = 0.1
-    gamma = 0.9
-    epsilon = 0.2
+# -----------------------------------------------------------------------------
+# Dashboard results
+# -----------------------------------------------------------------------------
+st.header("1. Shared-input paired comparison")
+st.caption(
+    "Every row is the same synthetic case evaluated by both policies. The paired t-test is used "
+    "because observations are matched by Case_ID. Holm adjustment controls family-wise error across "
+    "the three displayed primary metrics. Statistical significance does not validate the assumptions."
+)
 
-    # ========================================================
-    # NEXT STATE
-    # ========================================================
+summary_rows = []
+for _, row in results.iterrows():
+    summary_rows.append({
+        "Metric": row["Metric"],
+        "Baseline mean": row["Baseline_Mean"],
+        "Baseline SD": row["Baseline_SD"],
+        "AO-LACCP mean": row["AO_LACCP_Mean"],
+        "AO-LACCP SD": row["AO_LACCP_SD"],
+        "AO − Baseline": row["AO_minus_Baseline"],
+        "Favorable 95% CI lower": row["Favorable_95CI_Lower"],
+        "Favorable 95% CI upper": row["Favorable_95CI_Upper"],
+        "Paired d_z": row["Paired_dz"],
+        "Raw p": row["p_raw"],
+        "Holm-adjusted p": row["p_Holm"],
+        "N paired cases": row["N_Pairs"],
+    })
+summary_table = pd.DataFrame(summary_rows)
+st.dataframe(summary_table.round(4), use_container_width=True, hide_index=True)
 
-    def next_state(state):
+cols = st.columns(3)
+for col, (_, row) in zip(cols, results.iterrows()):
+    with col:
+        label = row["Metric"]
+        favorable = row["Favorable_Difference"]
+        col.metric(label, f"{favorable:.4f}", help="Positive means favorable to AO-LACCP under the configured outcome model.")
+        st.caption(f"Holm-adjusted p {p_format(row['p_Holm'])}")
 
-        return np.random.choice(
-            states,
-            p=transition[state]
-        )
+st.subheader("Paired outcome distributions")
+figures = {}
+for name, bcol, acol, direction, ylabel in metric_specs:
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    positions = [1, 2]
+    ax.boxplot([df[bcol].to_numpy(), df[acol].to_numpy()], positions=positions, labels=["Baseline", "AO-LACCP"])
+    ax.set_title(f"{name}: matched synthetic cases")
+    ax.set_ylabel(ylabel)
+    ax.grid(axis="y", alpha=0.25)
+    fig.tight_layout()
+    figures[name] = fig
+    st.pyplot(fig, clear_figure=False)
+    row = results.loc[results["Metric"] == name].iloc[0]
+    st.write(describe_difference(row))
 
-    # ========================================================
-    # Q-LEARNING
-    # ========================================================
+if show_raw:
+    st.subheader("Synthetic observation-level dataset")
+    st.dataframe(df, use_container_width=True, hide_index=True)
 
-    for episode in range(300):
+st.subheader("Action distribution")
+action_table = pd.concat([
+    df["Baseline_Action"].value_counts().rename("Baseline count"),
+    df["AO_LACCP_Action"].value_counts().rename("AO-LACCP count"),
+], axis=1).fillna(0).astype(int).rename_axis("Action").reset_index()
+st.dataframe(action_table, use_container_width=True, hide_index=True)
 
-        state = np.random.choice(
-            states
-        )
+# -----------------------------------------------------------------------------
+# Repeated simulation runs: use one paired comparison per run
+# -----------------------------------------------------------------------------
+st.header("2. Repeated simulation robustness check")
+st.caption(
+    "Each replication generates new shared cases and compares both policies within that replication. "
+    "The replication-level table describes sensitivity to random draws; replications are not human participants."
+)
+rep_records = []
+for run_idx in range(n_repeats):
+    run_df = run_paired_simulation(random_seed + run_idx, threat_scenario, n, compliance_level, crypto_model)
+    rec = {"Run": run_idx + 1, "Seed": random_seed + run_idx}
+    for metric, bcol, acol, direction, _ in metric_specs:
+        row = paired_statistics(run_df[bcol], run_df[acol], metric, direction)
+        rec[f"{metric}_FavorableDifference"] = row["Favorable_Difference"]
+        rec[f"{metric}_p_raw"] = row["p_raw"]
+    rep_records.append(rec)
+replications = pd.DataFrame(rep_records)
+rep_summary = []
+for metric, *_ in metric_specs:
+    values = replications[f"{metric}_FavorableDifference"]
+    rep_summary.append({
+        "Metric": metric,
+        "Mean favorable difference across runs": values.mean(),
+        "SD across runs": values.std(ddof=1),
+        "Runs": n_repeats,
+        "Runs favoring AO-LACCP": int((values > 0).sum()),
+    })
+rep_summary_df = pd.DataFrame(rep_summary)
+st.dataframe(rep_summary_df.round(4), use_container_width=True, hide_index=True)
 
-        for step in range(10):
-
-            if np.random.rand() < epsilon:
-
-                action = np.random.choice(
-                    actions
-                )
-
+# -----------------------------------------------------------------------------
+# Separate, explicitly disconnected Q-learning demonstration
+# -----------------------------------------------------------------------------
+fig_q = None
+if rl_enabled:
+    st.header("3. Separate illustrative Q-learning demonstration")
+    st.warning(
+        "This toy Q-learning example is not connected to the policy actions, outcomes, or statistical "
+        "comparisons above. Do not describe it as the controller that produced these results."
+    )
+    states = ["Low", "Medium", "High"]
+    actions = ["Monitor", "Mitigate", "Escalate"]
+    transition = {"Low": [0.70, 0.25, 0.05], "Medium": [0.30, 0.50, 0.20], "High": [0.10, 0.40, 0.50]}
+    reward_map = {
+        ("Low", "Monitor"): 10, ("Medium", "Mitigate"): 20, ("High", "Escalate"): 30,
+    }
+    rng = np.random.default_rng(random_seed + 100_000)
+    q = pd.DataFrame(0.0, index=states, columns=actions)
+    alpha, gamma, epsilon = 0.10, 0.90, 0.20
+    for _ in range(300):
+        state = rng.choice(states)
+        for _ in range(10):
+            if rng.random() < epsilon:
+                action = rng.choice(actions)
             else:
-
-                action = Q.loc[
-                    state
-                ].idxmax()
-
-            r = reward(
-                state,
-                action
-            )
-
-            new_state = next_state(
-                state
-            )
-
-            Q.loc[
-                state,
-                action
-            ] += alpha * (
-                r
-                +
-                gamma
-                *
-                Q.loc[new_state].max()
-                -
-                Q.loc[state, action]
-            )
-
-            state = new_state
-
-    # ========================================================
-    # Q TABLE
-    # ========================================================
-
-    st.subheader(
-        "🧠 Q-Table"
-    )
-
-    st.dataframe(
-        Q,
-        use_container_width=True
-    )
-
-    # ========================================================
-    # POLICY
-    # ========================================================
-
-    st.subheader(
-        "📈 Optimal Policy"
-    )
-
-    policy = Q.idxmax(
-        axis=1
-    )
-
-    values = Q.max(
-        axis=1
-    )
-
-    fig_policy, ax = plt.subplots(
-        figsize=(7, 5)
-    )
-
-    ax.bar(
-        states,
-        values
-    )
-
+                qvals = q.loc[state].to_numpy()
+                best = np.flatnonzero(np.isclose(qvals, qvals.max()))
+                action = actions[int(rng.choice(best))]
+            reward = reward_map.get((state, action), -5)
+            next_state = rng.choice(states, p=transition[state])
+            q.loc[state, action] += alpha * (reward + gamma * q.loc[next_state].max() - q.loc[state, action])
+            state = next_state
+    st.dataframe(q.round(3), use_container_width=True)
+    learned_policy = q.idxmax(axis=1)
+    fig_q, ax = plt.subplots(figsize=(7, 4))
+    vals = q.max(axis=1)
+    ax.bar(states, vals)
     for i, state in enumerate(states):
+        ax.text(i, vals[state], learned_policy[state], ha="center", va="bottom")
+    ax.set_title("Toy Q-learning policy (not connected to primary comparison)")
+    ax.set_ylabel("Estimated Q-value")
+    ax.grid(axis="y", alpha=0.25)
+    fig_q.tight_layout()
+    st.pyplot(fig_q)
 
-        ax.text(
-            i,
-            values[state],
-            policy[state],
-            ha="center",
-            va="bottom",
-            fontweight="bold"
-        )
-
-    ax.set_title(
-        "Optimal Policy by Risk Level"
-    )
-
-    ax.set_ylabel(
-        "Expected Utility"
-    )
-
-    ax.grid(
-        axis="y",
-        alpha=0.25
-    )
-
-    plt.tight_layout()
-
-    st.pyplot(
-        fig_policy
-    )
-
-else:
-
-    st.info(
-        "Reinforcement Learning is disabled. "
-        "Enable it from the sidebar to display the Q-learning analysis."
-    )
-
-    fig_policy = None
-
-
-# ============================================================
-# FINAL INTERPRETATION
-# ============================================================
-
-st.subheader(
-    "📘 APA Interpretation"
-)
-
-# ============================================================
-# H1 INTERPRETATION
-# ============================================================
-
-risk_direction = (
-    "reduces"
-    if df["AO-LACCP_Risk"].mean()
-    <
-    df["Baseline_Risk"].mean()
-    else
-    "increases"
-)
-
+# -----------------------------------------------------------------------------
+# Interpretation and downloads
+# -----------------------------------------------------------------------------
+st.header("4. Interpretation and limitations")
 st.markdown(
-    f"""
-### H1: Cyber Risk
-
-**F(1, {2*n-2}) = {h1_f:.2f}, {significance_text(h1_p)}**
-
-The AO-LACCP framework **{risk_direction} cyber risk**
-relative to the baseline condition.
-
-**Decision:** {decision(h1_p)}
-"""
+    "**What this comparison can support:** reproducible, paired comparison of two explicitly defined "
+    "policies under the same synthetic cases and the same outcome equations.\n\n"
+    "**What it cannot support by itself:** a claim that the deployed AO-LACCP artifact has achieved "
+    "these risk, latency, or cryptographic-agility gains in real banking/FinTech systems. The numerical "
+    "results depend on illustrative action thresholds, mitigation values, latency costs, and synthetic distributions.\n\n"
+    "**Required next step for dissertation use:** replace `ao_laccp_adaptive_rule_policy()` with the actual "
+    "AO-LACCP decision logic, define the baseline from a defensible reference method, justify or calibrate "
+    "the outcome model independently, perform sensitivity analysis, and validate on held-out or external data "
+    "where feasible. Report the results as simulation evidence, not production evidence."
 )
 
-# ============================================================
-# H2 INTERPRETATION
-# ============================================================
+metadata = pd.DataFrame([
+    {"Item": "Scenario", "Value": threat_scenario},
+    {"Item": "Compliance-pressure setting", "Value": compliance_level},
+    {"Item": "Cryptographic mode", "Value": crypto_model},
+    {"Item": "Governance references (metadata only)", "Value": ", ".join(governance) if governance else "None selected"},
+    {"Item": "Random seed", "Value": random_seed},
+    {"Item": "Observations per run", "Value": n},
+    {"Item": "Repeated runs", "Value": n_repeats},
+    {"Item": "Policy evaluated", "Value": "Transparent rule-based placeholder; not trained AI"},
+    {"Item": "Outcome model", "Value": "Synthetic illustrative assumptions; not empirically calibrated"},
+])
 
-agility_direction = (
-    "improves"
-    if df["AO-LACCP_Agility"].mean()
-    >
-    df["Baseline_Agility"].mean()
-    else
-    "reduces"
+st.download_button(
+    "Download paired synthetic dataset (CSV)",
+    data=df.to_csv(index=False).encode("utf-8"),
+    file_name="AO_LACCP_paired_synthetic_dataset.csv",
+    mime="text/csv",
+)
+st.download_button(
+    "Download paired comparison results (CSV)",
+    data=results.to_csv(index=False).encode("utf-8"),
+    file_name="AO_LACCP_paired_comparison_statistics.csv",
+    mime="text/csv",
+)
+st.download_button(
+    "Download repeated-run results (CSV)",
+    data=replications.to_csv(index=False).encode("utf-8"),
+    file_name="AO_LACCP_repeated_run_results.csv",
+    mime="text/csv",
 )
 
-st.markdown(
-    f"""
-### H2: Cryptographic Agility
-
-**F(1, {2*n-2}) = {h2_f:.2f}, {significance_text(h2_p)}**
-
-The AO-LACCP framework **{agility_direction}
-cryptographic agility** relative to the baseline condition.
-
-**Decision:** {decision(h2_p)}
-"""
-)
-
-# ============================================================
-# H3 INTERPRETATION
-# ============================================================
-
-latency_direction = (
-    "reduces"
-    if df["AO-LACCP_Latency"].mean()
-    <
-    df["Baseline_Latency"].mean()
-    else
-    "increases"
-)
-
-st.markdown(
-    f"""
-### H3: Response Latency
-
-**F(1, {2*n-2}) = {h3_f:.2f}, {significance_text(h3_p)}**
-
-The AO-LACCP framework **{latency_direction}
-response latency** relative to the baseline condition.
-
-**Decision:** {decision(h3_p)}
-"""
-)
-
-# ============================================================
-# PERFORMANCE SUMMARY
-# ============================================================
-
-st.subheader(
-    "📊 AO-LACCP Performance Summary"
-)
-
-risk_reduction = (
-    (
-        df["Baseline_Risk"].mean()
-        -
-        df["AO-LACCP_Risk"].mean()
-    )
-    /
-    df["Baseline_Risk"].mean()
-) * 100
-
-latency_reduction = (
-    (
-        df["Baseline_Latency"].mean()
-        -
-        df["AO-LACCP_Latency"].mean()
-    )
-    /
-    df["Baseline_Latency"].mean()
-) * 100
-
-agility_improvement = (
-    (
-        df["AO-LACCP_Agility"].mean()
-        -
-        df["Baseline_Agility"].mean()
-    )
-    /
-    df["Baseline_Agility"].mean()
-) * 100
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-
-    st.metric(
-        "Cyber Risk Reduction",
-        f"{risk_reduction:.2f}%"
-    )
-
-with col2:
-
-    st.metric(
-        "Latency Reduction",
-        f"{latency_reduction:.2f}%"
-    )
-
-with col3:
-
-    st.metric(
-        "Agility Improvement",
-        f"{agility_improvement:.2f}%"
-    )
-
-# ============================================================
-# PDF GENERATOR
-# ============================================================
-
-def generate_pdf(
-    df,
-    desc_table,
-    summary,
-    anova_table,
-    fig_h1,
-    fig_h2,
-    fig_h3,
-    fig_policy,
-    threat_scenario
-):
-
+# PDF report generated on request
+if st.button("Prepare PDF report"):
     buffer = io.BytesIO()
-
     with PdfPages(buffer) as pdf:
-
-        # ====================================================
-        # TITLE PAGE
-        # ====================================================
-
-        fig, ax = plt.subplots(
-            figsize=(8.5, 11)
-        )
-
+        cover, ax = plt.subplots(figsize=(8.5, 11))
         ax.axis("off")
-
-        ax.text(
-            0.5,
-            0.65,
-            "AO-LACCP Full Dissertation Report",
-            ha="center",
-            fontsize=18,
-            fontweight="bold"
-        )
-
-        ax.text(
-            0.5,
-            0.57,
-            "AI-Orchestrated Latency-Aware "
-            "Cryptographic Control Plane",
-            ha="center",
-            fontsize=12
-        )
-
-        ax.text(
-            0.5,
-            0.49,
-            f"Case Study: {threat_scenario}",
-            ha="center",
-            fontsize=11
-        )
-
-        ax.text(
-            0.5,
-            0.43,
-            f"Cryptographic Model: {crypto_model}",
-            ha="center",
-            fontsize=11
-        )
-
-        ax.text(
-            0.5,
-            0.37,
-            f"Compliance Level: {compliance}",
-            ha="center",
-            fontsize=11
-        )
-
-        pdf.savefig(
-            fig,
-            bbox_inches="tight"
-        )
-
-        plt.close()
-
-        # ====================================================
-        # DATASET SAMPLE
-        # ====================================================
-
-        fig, ax = plt.subplots(
-            figsize=(11, 8)
-        )
-
-        ax.axis("off")
-
-        table = ax.table(
-            cellText=df.head(10).round(4).values,
-            colLabels=df.columns,
-            loc="center"
-        )
-
-        table.auto_set_font_size(
-            False
-        )
-
-        table.set_fontsize(
-            8
-        )
-
-        table.scale(
-            1,
-            1.5
-        )
-
-        ax.set_title(
-            "Synthetic Dataset Sample"
-        )
-
-        pdf.savefig(
-            fig,
-            bbox_inches="tight"
-        )
-
-        plt.close()
-
-        # ====================================================
-        # HYPOTHESIS FIGURES
-        # ====================================================
-
-        pdf.savefig(
-            fig_h1
-        )
-
-        pdf.savefig(
-            fig_h2
-        )
-
-        pdf.savefig(
-            fig_h3
-        )
-
-        # ====================================================
-        # POLICY FIGURE
-        # ====================================================
-
-        if fig_policy is not None:
-
-            pdf.savefig(
-                fig_policy
-            )
-
-        # ====================================================
-        # DESCRIPTIVE STATISTICS
-        # ====================================================
-
-        fig, ax = plt.subplots(
-            figsize=(11, 8)
-        )
-
-        ax.axis("off")
-
-        table = ax.table(
-            cellText=desc_table.round(4).values,
-            colLabels=desc_table.columns,
-            loc="center"
-        )
-
-        table.auto_set_font_size(
-            False
-        )
-
-        table.set_fontsize(
-            8
-        )
-
-        table.scale(
-            1,
-            1.5
-        )
-
-        ax.set_title(
-            "Descriptive Statistics"
-        )
-
-        pdf.savefig(
-            fig,
-            bbox_inches="tight"
-        )
-
-        plt.close()
-
-        # ====================================================
-        # HYPOTHESIS SUMMARY
-        # ====================================================
-
-        fig, ax = plt.subplots(
-            figsize=(11, 8)
-        )
-
-        ax.axis("off")
-
-        table = ax.table(
-            cellText=summary.round(5).values,
-            colLabels=summary.columns,
-            loc="center"
-        )
-
-        table.auto_set_font_size(
-            False
-        )
-
-        table.set_fontsize(
-            7
-        )
-
-        table.scale(
-            1,
-            1.5
-        )
-
-        ax.set_title(
-            "Hypothesis Summary"
-        )
-
-        pdf.savefig(
-            fig,
-            bbox_inches="tight"
-        )
-
-        plt.close()
-
-        # ====================================================
-        # ANOVA RESULTS
-        # ====================================================
-
-        fig, ax = plt.subplots(
-            figsize=(11, 8)
-        )
-
-        ax.axis("off")
-
-        table = ax.table(
-            cellText=anova_table.round(5).values,
-            colLabels=anova_table.columns,
-            loc="center"
-        )
-
-        table.auto_set_font_size(
-            False
-        )
-
-        table.set_fontsize(
-            7
-        )
-
-        table.scale(
-            1,
-            1.5
-        )
-
-        ax.set_title(
-            "One-Way ANOVA Results"
-        )
-
-        pdf.savefig(
-            fig,
-            bbox_inches="tight"
-        )
-
-        plt.close()
-
+        ax.text(0.5, 0.82, "AO-LACCP Paired Simulation Report", ha="center", fontsize=18, fontweight="bold")
+        ax.text(0.5, 0.75, "Synthetic comparison scaffold — not validated real-world performance", ha="center", fontsize=10)
+        lines = [
+            f"Scenario: {threat_scenario}", f"Compliance-pressure setting: {compliance_level}",
+            f"Cryptographic mode: {crypto_model}", f"Governance metadata: {', '.join(governance) if governance else 'None'}",
+            f"Seed: {random_seed}", f"Observations per run: {n}", f"Repeated runs: {n_repeats}",
+            "AO-LACCP policy: transparent rule-based placeholder, not trained AI",
+            "Outcome coefficients: illustrative assumptions requiring calibration/validation",
+        ]
+        for i, line in enumerate(lines):
+            ax.text(0.10, 0.64 - i * 0.045, line, fontsize=10)
+        pdf.savefig(cover, bbox_inches="tight")
+        plt.close(cover)
+        for fig in figures.values():
+            pdf.savefig(fig, bbox_inches="tight")
+        if fig_q is not None:
+            pdf.savefig(fig_q, bbox_inches="tight")
+        for table, title in [(summary_table, "Paired comparison statistics"), (rep_summary_df, "Repeated-run summary"), (action_table, "Action distribution"), (metadata, "Configuration and limitations")]:
+            fig, ax = plt.subplots(figsize=(11, 8.5))
+            ax.axis("off")
+            ax.set_title(title)
+            tab = ax.table(cellText=table.round(4).astype(str).values, colLabels=table.columns, loc="center")
+            tab.auto_set_font_size(False)
+            tab.set_fontsize(7)
+            tab.scale(1, 1.4)
+            pdf.savefig(fig, bbox_inches="tight")
+            plt.close(fig)
     buffer.seek(0)
-
-    return buffer
-
-
-# ============================================================
-# DOWNLOAD SYNTHETIC DATASET
-# ============================================================
-
-if download_data:
-
     st.download_button(
-        label="⬇ Download Synthetic Dataset",
-        data=df.to_csv(
-            index=False
-        ),
-        file_name="AO_LACCP_synthetic_dataset.csv",
-        mime="text/csv"
+        "Download AO-LACCP PDF report", data=buffer.getvalue(),
+        file_name="AO_LACCP_Paired_Simulation_Report.pdf", mime="application/pdf",
     )
 
-# ============================================================
-# GENERATE PDF
-# ============================================================
-
-if st.button(
-    "📄 Generate PDF Report"
-):
-
-    pdf_file = generate_pdf(
-        df,
-        desc_table,
-        summary,
-        anova_table,
-        fig_h1,
-        fig_h2,
-        fig_h3,
-        fig_policy if rl_enabled else None,
-        threat_scenario
-    )
-
-    st.download_button(
-        label="⬇ Download AO-LACCP PDF",
-        data=pdf_file,
-        file_name="AO-LACCP_Report.pdf",
-        mime="application/pdf"
-    )
-
-# ============================================================
-# SAVE RESULTS
-# ============================================================
-
-if save_output:
-
-    summary.to_csv(
-        "AO-LACCP_results.csv",
-        index=False
-    )
-
-    st.success(
-        "AO-LACCP results have been saved."
-    )
-
-# ============================================================
-# FOOTER
-# ============================================================
-
-st.markdown(
-    """
-    <p style="
-        color: darkred;
-        font-family: Arial, sans-serif;
-        font-size: 24px;
-        text-align: center;
-    ">
-        <br>
-        AO_LACCP Artifact Simulation –
-        Doctoral Research Demo | Any Questions?
-    </p>
-    """,
-    unsafe_allow_html=True
-)
+st.caption("AO-LACCP DSR prototype • Synthetic simulation only • Reproducible seed • Paired case design")
