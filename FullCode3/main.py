@@ -1,164 +1,4 @@
 
-no good again. it shows the samething
-The fact that the same problem persists suggests the issue may not be the HTML itself. We need to make the title page independent of HTML rendering so Streamlit displays the text correctly even if HTML is being escaped or handled unexpectedly.
-
-My recommendation is to remove the HTML entirely from the title page. Streamlit has native functions for titles, headings, centered content, and text. This also makes the page easier to maintain.
-
-1. Replace show_title_page() completely
-Delete your existing function and replace it with this version. This version contains no HTML tags and does not use unsafe_allow_html=True.
-
-
-
-    st.info("AO-LACCP Artifact Simulation – Doctoral Research Demo")
-
-    # Author information
-    st.divider()
-
-    left_col, center_col, right_col = st.columns([1, 3, 1])
-
-    with center_col:
-        st.markdown("### Aliou Maiga")
-
-        st.write("**Dissertation Committee**")
-        st.write("Michelle Liu, PhD — Committee Chair")
-        st.write("Nathan Green, PhD — Committee Member")
-        st.write("Seyedamin Pouriyeh, PhD — External Reader")
-        st.write("Anne Magro, PhD — Dean")
-
-        st.divider()
-
-        st.write(
-            "College of Business, Innovation, Leadership, "
-            "and Technology"
-        )
-
-        st.write(
-            "A Dissertation Proposal Presented in Partial Fulfillment "
-            "of the Requirements for the Degree of Doctor of Science"
-        )
-
-        st.markdown("**Marymount University**")
-        st.write("May 2027")
-
-    st.divider()
-
-    # Navigation instructions
-    st.header("Research Demonstration")
-
-    st.write(
-        "Use the sidebar to access the AO-LACCP framework, "
-        "multi-agent orchestration, threat scenarios, and "
-        "scientific research evaluation modules."
-    )
-
-    st.success(
-        "Select a module from the sidebar to open its interface. "
-        "Choose Home to return to this page."
-    )
-
-    st.subheader("Available Modules")
-
-    st.markdown(
-        """
-        - **Full Code 1:** AO-LACCP Full Framework
-        - **Full Code 2:** AO-LACCP Multi-Agent
-        - **Case Study Scenario:** Threat Scenarios
-        - **Full Code 3:** AO-LACCP Scientific Research Evaluation
-        """
-    )
-
-
-2. If the same HTML still appears
-Because this replacement contains no HTML, seeing the same literal <p> or <br> tags means the deployed page is likely rendering old code or displaying that content from another location.
-
-Check these three things:
-
-In GitHub, open the exact dashboard.py file used by Streamlit and confirm that the old show_title_page() function is gone.
-
-Search the repository for TOPIC: AI-Orchestrated Cyber Resilience and Michelle Liu, PhD. Check whether another file contains the old HTML.
-
-In Streamlit Community Cloud, open Manage app and review the app's deployment logs. Confirm that it is deploying the repository, branch, and entry-point file you edited.
-
-Please do not replace the entire dashboard again yet. First replace only this function and redeploy. If the HTML tags still appear, send me the URL of your deployed Streamlit app, and I can help identify whether the problem is in the entry-point file or one of the imported modules.
-
-full code
-Here is the complete dashboard.py with the title page rewritten using native Streamlit elements. This version removes HTML from the title page entirely and retains your four modules and the corrected navigation callback.
-
-Replace the entire contents of your existing dashboard.py with this code.
-
-
-import os
-import sys
-import importlib.util
-
-import streamlit as st
-from PIL import Image
-
-# ============================================================
-# AO-LACCP DASHBOARD CONFIGURATION
-# ============================================================
-
-st.set_page_config(
-    page_title="AO-LACCP Dashboard",
-    page_icon="🔐",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-LOGO_PATH = os.path.join(BASE_DIR, "marymount_logo.png")
-
-# Sidebar labels and corresponding module directories.
-MODULES = {
-    "Full Code 1: AO-LACCP Full Framework": "FullCode1",
-    "Full Code 2: AO-LACCP Multi-Agent": "FullCode2",
-    "Case Study Scenario: Threat Scenarios": "CaseStudyScenario",
-    "Full Code 3: AO-LACCP Scientific Research Evaluation": "FullCode3",
-}
-
-SELECTION_OPTIONS = ["Home"] + list(MODULES.keys())
-
-# ============================================================
-# NAVIGATION STATE
-# ============================================================
-
-# Initialize state before creating the radio widget.
-if "module_choice" not in st.session_state:
-    st.session_state["module_choice"] = "Home"
-
-if st.session_state["module_choice"] not in SELECTION_OPTIONS:
-    st.session_state["module_choice"] = "Home"
-
-
-def return_to_home():
-    """Set navigation state before Streamlit reruns."""
-    st.session_state["module_choice"] = "Home"
-
-
-# ============================================================
-# LOGO AND DASHBOARD HEADER
-# ============================================================
-
-logo_col1, logo_col2, logo_col3 = st.columns([1, 2, 1])
-
-with logo_col2:
-    if os.path.isfile(LOGO_PATH):
-        try:
-            logo = Image.open(LOGO_PATH)
-            st.image(logo, width=400)
-        except Exception as exc:
-
-Deployment checklist
-Open your GitHub repository and replace the entire dashboard.py file.
-
-Commit the changes to the branch used by Streamlit Community Cloud.
-
-Wait for the deployment to finish, then refresh the app.
-
-If the old HTML still appears, verify that Streamlit's configured entry point is this dashboard.py, not another dashboard file.
-
-Important: This fixes the title page in the dashboard file shown here. If one of the four child modules renders the old title or contains its own HTML, that module will need a separate correction.
-
 i used now this below, but give me errors (ValueError: This app has encountered an error. The original error message is redacted to prevent data leaks. Full error details have been recorded in the logs (if you're on Streamlit Cloud, click on 'Manage app' in the lower right of your app).
 Traceback:
 File "/mount/src/ao-laccp/dashboard.py", line 85, in <module>     index=module_options.index(st.session_state.module_choice)):
@@ -447,6 +287,46 @@ Save the file and restart the Streamlit app.
 Your root dashboard should continue loading Full Code 3 through its existing module loader.
 
 Important: This correction addresses the likely rendering failure; it does not guarantee that every runtime issue is resolved. The code's synthetic outcome assumptions and Q-learning evaluation still need scientific justification and sensitivity testing before you use the results as evidence of AO-LACCP's superiority.
+
+
+FullCode3_fixed.py
+Code
+SyntaxError: This app has encountered an error. The original error message is redacted to prevent data leaks. Full error details have been recorded in the logs (if you're on Streamlit Cloud, click on 'Manage app' in the lower right of your app).
+Traceback:
+File "/mount/src/ao-laccp/dashboard.py", line 119, in <module>     run_module("FullCode3")     ~~~~~~~~~~^^^^^^^^^^^^^
+File "/mount/src/ao-laccp/dashboard.py", line 102, in run_module     spec.loader.exec_module(module)     ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^
+File "<frozen importlib._bootstrap_external>", line 759, in exec_module
+File "<frozen importlib._bootstrap_external>", line 897, in get_code
+File "<frozen importlib._bootstrap_external>", line 827, in source_to_code
+File "<frozen importlib._bootstrap>", line 491, in _call_with_frames_removed
+
+The traceback shows that Streamlit fails while Python is trying to compile FullCode3 before executing it. The error occurs when dashboard.py calls run_module("FullCode3"), so the issue is likely in the Python source file being imported—not necessarily in dashboard.py itself.
+
+The traceback you shared is missing the most important details: the actual SyntaxError message, the filename and line number inside FullCode3, and the line of code marked with a caret (^).
+
+First, check that the corrected file was deployed to the right location. Your project should have this structure:
+
+ao-laccp/
+├── dashboard.py
+└── FullCode3/
+    └── main.py
+If your dashboard imports FullCode3/main.py, replacing a different file will not fix the deployed error.
+
+I also rechecked the corrected file from our previous step: FullCode3_fixed.py passes Python's syntax compilation check.
+
+Download the corrected full Code 3
+
+Next steps
+
+Replace the contents of FullCode3/main.py in your GitHub repository with the downloaded file.
+
+Commit and push the changes.
+
+Wait for Streamlit Cloud to redeploy the app.
+
+If it still fails, open Manage app → Logs and copy the complete error, especially the first line containing SyntaxError and the line number.
+
+If the error persists after replacing the file, send me that full error message. The traceback provided so far does not identify the exact line causing the current syntax error, so I don't want to guess at another code change.
 
 
 FullCode3_fixed.py
