@@ -1,119 +1,237 @@
+
 import streamlit as st
 from PIL import Image
 import os
 import importlib.util
 import sys
+import uuid
+import traceback
 
 # ==============================
-# DASHBOARD TITLE PAGE
+# PAGE CONFIGURATION
 # ==============================
+# This must be the first Streamlit command.
+# Do not call st.set_page_config() again in imported modules.
+st.set_page_config(
+    page_title="AO-LACCP Dashboard",
+    page_icon="🔐",
+    layout="wide"
+)
 
-# ------------------------------
-# Logo Path
-# ------------------------------
-logo_path = os.path.join(os.path.dirname(__file__), "marymount_logo.png")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# ------------------------------
-# Display Logo Centered
-# ------------------------------
-if os.path.exists(logo_path):
-    try:
-        img = Image.open(logo_path)
-        # Center the image using st.image inside a column
-        col1, col2, col3 = st.columns([1,2,1])  # middle column is wider
-        with col2:
-            st.image(img, width=440, use_container_width=False)
-    except Exception as e:
-        st.warning(f"Cannot open logo: {e}")
-else:
-    st.warning(f"Logo not found: {logo_path}")
 
-# ------------------------------
-# HTML Header Centered and Colored
-# ------------------------------
-st.markdown("""
-<div style="text-align: center; padding: 10px; background-color: #f5f5f5;">
-    <h1 style="color: #10069F;">AO-LACCP Dashboard</h1>
-</div>
-""", unsafe_allow_html=True)
+# ==============================
+# DASHBOARD HEADER AND LOGO
+# ==============================
+def show_dashboard_header():
+    logo_path = os.path.join(BASE_DIR, "marymount_logo.png")
 
-# ------------------------------
-# Function to Show Title Page (Centered)
-# ------------------------------
+    if os.path.exists(logo_path):
+        try:
+            img = Image.open(logo_path)
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                st.image(img, width=440)
+        except Exception as e:
+            st.warning(f"Cannot open logo: {e}")
+    else:
+        st.warning(f"Logo not found: {logo_path}")
+
+    st.markdown(
+        """
+        <div style="
+            text-align: center;
+            padding: 10px;
+            background-color: #f5f5f5;
+        ">
+            <h1 style="color: #10069F;">AO-LACCP Dashboard</h1>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+# Display the common header
+show_dashboard_header()
+
+
+# ==============================
+# TITLE PAGE
+# ==============================
 def show_title_page():
-    st.markdown("""
-    <div style="text-align: center;">
-        <h4 style="color: #2c3e50;">AI-Orchestrated Latency-Aware Cryptographic Control Plane</h4>
-    
-<p style="text-align: center; font-family: Arial; font-size: 11pt; color: #8B0000; text-transform: capitalize;">
-    <strong><b>TOPIC: AI-Orchestrated Cyber Resilience: An Adaptive Framework For Cyber Risk Management In  Banking And Fintech Ecosystems</b></strong>
-</p>
-<p style="text-align: center; font-family: Arial; font-size: 14pt; color: #8B0000; text-transform: capitalize;">
-    <strong><b>AO-LACCP Artifact Simulation – Doctoral Research Demo</b></strong>
-</p>
-  
+    st.markdown(
+        """
+        <div style="text-align: center;">
+            <h4 style="color: #2c3e50;">
+                AI-Orchestrated Latency-Aware Cryptographic Control Plane
+            </h4>
 
-  <p style="text-align: center; font-family: Arial; font-size: 14px; color: #2c3e50; line-height:1.5;">
-    By<br>
-    <strong>Aliou Maiga</strong><br><br>
-    MICHELLE LIU, PhD, Committee Chair<br>
-    NATHAN GREEN, PhD, Committee Member<br>
-    SEYEDAMIN POURIYEH, PhD, External Reader<br>
-   ANNE MAGRO, PhD, Dean<br><br>
-    College of Business, Innovation, Leadership, and Technology<br><br>
-    A Dissertation Proposal Presented in Partial Fulfillment of the Requirements for the Degree Doctor of Science<br><br>
-    Marymount University<br>
-    May 2027
-</p>
-    </div>
-    """, unsafe_allow_html=True)
+            <p style="
+                font-family: Arial;
+                font-size: 11pt;
+                color: #8B0000;
+            ">
+                <strong>
+                    TOPIC: AI-Orchestrated Cyber Resilience: An Adaptive
+                    Framework for Cyber Risk Management in Banking and
+                    FinTech Ecosystems
+                </strong>
+            </p>
+
+            <p style="
+                font-family: Arial;
+                font-size: 14pt;
+                color: #8B0000;
+            ">
+                <strong>
+                    AO-LACCP Artifact Simulation – Doctoral Research Demo
+                </strong>
+            </p>
+
+            <p style="
+                font-family: Arial;
+                font-size: 14px;
+                color: #2c3e50;
+                line-height: 1.5;
+            ">
+                By<br>
+                <strong>Aliou Maiga</strong><br><br>
+                MICHELLE LIU, PhD, Committee Chair<br>
+                NATHAN GREEN, PhD, Committee Member<br>
+                SEYEDAMIN POURIYEH, PhD, External Reader<br>
+                ANNE MAGRO, PhD, Dean<br><br>
+                College of Business, Innovation, Leadership, and Technology
+                <br><br>
+                A Dissertation Proposal Presented in Partial Fulfillment
+                of the Requirements for the Degree Doctor of Science
+                <br><br>
+                Marymount University<br>
+                May 2027
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 
 # ==============================
-# Sidebar Module Selection
+# MODULE SELECTION
 # ==============================
+MODULE_OPTIONS = [
+    "None",
+    "Full Code 1: AO-LACCP Full Framework",
+    "Full Code 2: AO-LACCP Multi-Agent",
+    "Case Study Scenario: Threat Scenarios",
+    "Full Code 3: AO-LACCP Scientific Research Evaluation"
+]
+
+MODULE_FOLDERS = {
+    "Full Code 1": "FullCode1",
+    "Full Code 2": "FullCode2",
+    "Case Study Scenario": "CaseStudyScenario",
+    "Full Code 3": "FullCode3",
+}
+
 st.sidebar.header("Select Module to Run")
-module_options = ["None", "Full Code 1: AO-LACCP Full Framework", 
-                  "Full Code 2: AO-LACCP Multi-Agent", 
-                  "Case Study Scenario: Threat Scenarios", "Full Code 3: AO-LACCP Scientific Research Evaluation"]
 
 if "module_choice" not in st.session_state:
     st.session_state.module_choice = "None"
 
-st.session_state.module_choice = st.sidebar.radio(
+# Protect against an outdated selection after module options change.
+if st.session_state.module_choice not in MODULE_OPTIONS:
+    st.session_state.module_choice = "None"
+
+selected_choice = st.sidebar.radio(
     "Choose Module",
-    module_options,
-    index=module_options.index(st.session_state.module_choice)
+    MODULE_OPTIONS,
+    index=MODULE_OPTIONS.index(st.session_state.module_choice),
+    key="module_radio"
 )
 
-if st.session_state.module_choice != "None":
-    if st.sidebar.button("Close Module"):
+st.session_state.module_choice = selected_choice
+
+if selected_choice != "None":
+    if st.sidebar.button("Close Module", key="close_module"):
         st.session_state.module_choice = "None"
-        st.experimental_rerun = True
+        st.rerun()
+
 
 # ==============================
-# Function to Import and Run a Module
+# IMPORT AND RUN A MODULE
 # ==============================
 def run_module(folder_name):
-    module_path = os.path.join(folder_name, "main.py")
-    if os.path.exists(module_path):
-        spec = importlib.util.spec_from_file_location("module_main", module_path)
+    module_path = os.path.join(BASE_DIR, folder_name, "main.py")
+
+    # Check the expected file exists.
+    if not os.path.isfile(module_path):
+        st.error(f"Module file not found: {module_path}")
+        st.info(
+            "Check that the folder and filename match exactly, "
+            "including capitalization."
+        )
+        return
+
+    # Give each module a unique name to avoid module-cache collisions.
+    module_name = f"ao_laccp_{folder_name}_{uuid.uuid4().hex}"
+
+    try:
+        spec = importlib.util.spec_from_file_location(
+            module_name,
+            module_path
+        )
+
+        if spec is None or spec.loader is None:
+            st.error(f"Could not create an import loader for: {module_path}")
+            return
+
         module = importlib.util.module_from_spec(spec)
-        sys.modules["module_main"] = module
+        sys.modules[module_name] = module
+
+        # Execute the Python file.
         spec.loader.exec_module(module)
-    else:
-        st.error(f"Module not found: {module_path}")
+
+        # IMPORTANT:
+        # Importing a file does not execute its main() function when
+        # the file contains: if __name__ == "__main__": main()
+        main_function = getattr(module, "main", None)
+
+        if callable(main_function):
+            main_function()
+        else:
+            st.error(
+                f"{folder_name}/main.py loaded, but it does not define "
+                "a callable main() function."
+            )
+            st.info(
+                "If this module uses top-level Streamlit code instead "
+                "of a main() function, its structure must be adjusted."
+            )
+
+    except Exception as e:
+        st.error(f"Error while loading {folder_name}: {e}")
+        st.code(traceback.format_exc())
+
+    finally:
+        # Remove the temporary module entry after execution.
+        sys.modules.pop(module_name, None)
+
 
 # ==============================
-# Run Title Page or Module
+# RUN SELECTED MODULE
 # ==============================
 if st.session_state.module_choice == "None":
     show_title_page()
+
 else:
-    if st.session_state.module_choice.startswith("Full Code 1"):
-        run_module("FullCode1")
-    elif st.session_state.module_choice.startswith("Full Code 2"):
-        run_module("FullCode2")
-    elif st.session_state.module_choice.startswith("Case Study Scenario"):
-        run_module("CaseStudyScenario")
-    elif st.session_state.module_choice.startswith("Full Code 3"):
-        run_module("FullCode3")
+    selected_folder = None
+
+    for label, folder in MODULE_FOLDERS.items():
+        if st.session_state.module_choice.startswith(label):
+            selected_folder = folder
+            break
+
+    if selected_folder:
+        run_module(selected_folder)
+    else:
+        st.error("The selected module could not be identified.")
