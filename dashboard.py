@@ -74,7 +74,7 @@ def show_title_page():
 st.sidebar.header("Select Module to Run")
 module_options = ["None", "Full Code 1: AO-LACCP Full Framework", 
                   "Full Code 2: AO-LACCP Multi-Agent", 
-                  "Case Study Scenario: Threat Scenarios", "Research: AO-LACCP Scientific Validation Research"]
+                  "Case Study Scenario: Threat Scenarios", "research"]
 
 if "module_choice" not in st.session_state:
     st.session_state.module_choice = "None"
@@ -115,5 +115,5 @@ else:
         run_module("FullCode2")
     elif st.session_state.module_choice.startswith("Case Study Scenario"):
         run_module("CaseStudyScenario")
-    elif st.session_state.module_choice.startswith("AO-LACCP Scientific Validation Research"):
+    elif st.session_state.module_choice.startswith("research"):
         run_module("research")
