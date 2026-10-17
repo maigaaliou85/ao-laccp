@@ -1,4 +1,3 @@
-
 import os
 import sys
 import importlib.util
@@ -20,6 +19,7 @@ st.set_page_config(
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOGO_PATH = os.path.join(BASE_DIR, "marymount_logo.png")
 
+# Sidebar labels and corresponding module directories.
 MODULES = {
     "Full Code 1: AO-LACCP Full Framework": "FullCode1",
     "Full Code 2: AO-LACCP Multi-Agent": "FullCode2",
@@ -33,7 +33,7 @@ SELECTION_OPTIONS = ["Home"] + list(MODULES.keys())
 # NAVIGATION STATE
 # ============================================================
 
-# Initialize the state before creating the radio widget.
+# Initialize state before creating the radio widget.
 if "module_choice" not in st.session_state:
     st.session_state["module_choice"] = "Home"
 
@@ -42,12 +42,12 @@ if st.session_state["module_choice"] not in SELECTION_OPTIONS:
 
 
 def return_to_home():
-    """Change the navigation state before Streamlit reruns."""
+    """Set navigation state before Streamlit reruns."""
     st.session_state["module_choice"] = "Home"
 
 
 # ============================================================
-# HEADER AND LOGO
+# LOGO AND DASHBOARD HEADER
 # ============================================================
 
 logo_col1, logo_col2, logo_col3 = st.columns([1, 2, 1])
@@ -57,133 +57,95 @@ with logo_col2:
         try:
             logo = Image.open(LOGO_PATH)
             st.image(logo, width=400)
-        except Exception:
-            st.warning("The Marymount logo could not be opened.")
+        except Exception as exc:
+            st.warning(f"The Marymount logo could not be opened: {exc}")
     else:
         st.warning(
             "Marymount logo not found. Expected location: "
             f"{LOGO_PATH}"
         )
 
-st.markdown(
-    """
-    <div style="
-        text-align: center;
-        padding: 12px;
-        background-color: #f5f5f5;
-        border-radius: 8px;
-    ">
-        <h1 style="color: #10069F; margin: 0;">
-            AO-LACCP Dashboard
-        </h1>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
+st.title("AO-LACCP Dashboard")
 st.divider()
 
 
 # ============================================================
-# TITLE PAGE
+# TITLE PAGE — NATIVE STREAMLIT ONLY
+# No HTML tags are used in this function.
 # ============================================================
 
 def show_title_page():
-    """Render the AO-LACCP doctoral research title page."""
+    """Display the doctoral research title page."""
 
-    # Render the title and research topic as HTML.
-    st.markdown(
-        """
-        <div style="text-align: center;">
-
-            <h3 style="color: #2c3e50;">
-                AI-Orchestrated Latency-Aware Cryptographic Control Plane
-            </h3>
-
-            <p style="
-                font-family: Arial, sans-serif;
-                font-size: 16px;
-                color: #8B0000;
-            ">
-                <strong>
-                    TOPIC: AI-Orchestrated Cyber Resilience:
-                    An Adaptive Framework for Cyber Risk Management
-                    in Banking and FinTech Ecosystems
-                </strong>
-            </p>
-
-            <p style="
-                font-family: Arial, sans-serif;
-                font-size: 16px;
-                color: #8B0000;
-            ">
-                <strong>
-                    AO-LACCP Artifact Simulation –
-                    Doctoral Research Demo
-                </strong>
-            </p>
-
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    # Render the author, committee, institution, and date.
-    st.markdown(
-        """
-        <div style="
-            text-align: center;
-            font-family: Arial, sans-serif;
-            font-size: 15px;
-            color: #2c3e50;
-            line-height: 1.8;
-        ">
-            By<br>
-            <strong>Aliou Maiga</strong><br><br>
-
-            Michelle Liu, PhD — Committee Chair<br>
-            Nathan Green, PhD — Committee Member<br>
-            Seyedamin Pouriyeh, PhD — External Reader<br>
-            Anne Magro, PhD — Dean<br><br>
-
-            College of Business, Innovation, Leadership, and Technology
-            <br><br>
-
-            A Dissertation Proposal Presented in Partial Fulfillment
-            of the Requirements for the Degree of Doctor of Science
-            <br><br>
-
-            Marymount University<br>
-            May 2027
-        </div>
-        """,
-        unsafe_allow_html=True,
+    st.title(
+        "AI-Orchestrated Latency-Aware Cryptographic Control Plane"
     )
 
     st.divider()
 
-    st.subheader("Research Demonstration")
+    st.subheader("Doctoral Research Topic")
+
+    st.markdown(
+        "**AI-Orchestrated Cyber Resilience: An Adaptive Framework "
+        "for Cyber Risk Management in Banking and FinTech Ecosystems**"
+    )
+
+    st.info("AO-LACCP Artifact Simulation – Doctoral Research Demo")
+
+    st.divider()
+
+    # Center the author and dissertation information.
+    left_col, center_col, right_col = st.columns([1, 3, 1])
+
+    with center_col:
+        st.markdown("### By")
+        st.header("Aliou Maiga")
+
+        st.markdown("#### Dissertation Committee")
+        st.write("Michelle Liu, PhD — Committee Chair")
+        st.write("Nathan Green, PhD — Committee Member")
+        st.write("Seyedamin Pouriyeh, PhD — External Reader")
+        st.write("Anne Magro, PhD — Dean")
+
+        st.divider()
+
+        st.write(
+            "College of Business, Innovation, Leadership, "
+            "and Technology"
+        )
+
+        st.write(
+            "A Dissertation Proposal Presented in Partial Fulfillment "
+            "of the Requirements for the Degree of Doctor of Science"
+        )
+
+        st.markdown("**Marymount University**")
+        st.write("May 2027")
+
+    st.divider()
+
+    # Research demonstration instructions.
+    st.header("Research Demonstration")
 
     st.write(
         "Use the sidebar to open an AO-LACCP module. "
-        "Each module contains its own simulation, analysis, "
+        "Each module provides its own simulation, analysis, "
         "or evaluation interface."
     )
 
     st.info(
         "Select a module from the sidebar to open its interface. "
-        "Use Return to Home to return to this page."
+        "Choose Home to return to this page."
     )
 
-    st.markdown("### Available modules")
+    st.subheader("Available Modules")
 
     st.markdown(
         """
-        - **Full Framework:** AO-LACCP framework and simulation.
-        - **Multi-Agent:** Multi-agent orchestration demonstration.
-        - **Threat Scenarios:** Case-study threat scenarios.
-        - **Scientific Research Evaluation:** Evaluation metrics,
-          comparisons, statistical analysis, and research outputs.
+        - **Full Code 1:** AO-LACCP Full Framework
+        - **Full Code 2:** AO-LACCP Multi-Agent
+        - **Case Study Scenario:** Threat Scenarios
+        - **Full Code 3:** AO-LACCP Scientific Research Evaluation
         """
     )
 
@@ -194,11 +156,11 @@ def show_title_page():
 
 def run_module(folder_name):
     """
-    Load and execute:
+    Load a module from:
         <dashboard directory>/<folder_name>/main.py
 
-    If the module defines main(), call it explicitly.
-    Otherwise, execute its top-level code when imported.
+    If the module defines main(), call it after importing.
+    Otherwise, its top-level code executes during import.
     """
 
     module_dir = os.path.join(BASE_DIR, folder_name)
@@ -222,7 +184,7 @@ def run_module(folder_name):
     added_path = module_dir not in sys.path
 
     try:
-        # Allow the module to import local sibling files.
+        # Allow imports of files located inside the module folder.
         if added_path:
             sys.path.insert(0, module_dir)
 
@@ -232,7 +194,7 @@ def run_module(folder_name):
         )
 
         if spec is None or spec.loader is None:
-            st.error("Python could not load the selected module.")
+            st.error(f"Unable to load module: {module_path}")
             return
 
         module = importlib.util.module_from_spec(spec)
@@ -241,7 +203,6 @@ def run_module(folder_name):
         with st.spinner(f"Loading {folder_name}..."):
             spec.loader.exec_module(module)
 
-        # Call the module entry point when provided.
         module_main = getattr(module, "main", None)
 
         if callable(module_main):
@@ -252,7 +213,7 @@ def run_module(folder_name):
         st.exception(exc)
 
     finally:
-        # Remove only the path this function added.
+        # Remove only the path added by this function.
         if added_path and module_dir in sys.path:
             sys.path.remove(module_dir)
 
@@ -271,19 +232,18 @@ selected_module = st.sidebar.radio(
 )
 
 st.sidebar.divider()
-st.sidebar.caption("Module controls")
+st.sidebar.caption("Module Controls")
 
-# The callback runs before the next script execution.
 st.sidebar.button(
     "Return to Home",
     key="return_home_button",
-    use_container_width=True,
     on_click=return_to_home,
+    use_container_width=True,
 )
 
 st.sidebar.caption(
-    "If a module does not open, verify its folder structure "
-    "and review any error displayed on the main page."
+    "If a module does not open, check its folder structure "
+    "and review the error displayed on the main page."
 )
 
 
