@@ -1,23 +1,29 @@
-"""AO-LACCP scientific paired-evaluation prototype.
+"""
+AO-LACCP Scientific Paired Evaluation Prototype
+================================================
 
-This is a transparent synthetic simulation harness, NOT a production validation.
-It trains a tabular Q-learning policy on training scenarios, freezes it, and
-compares it with a fixed-threshold baseline on independent held-out scenarios.
-Both policies receive the same scenario inputs and share one outcome simulator.
-
-IMPORTANT: action effectiveness, scenario distributions, latency equation, and
-reward weights are explicit assumptions. Justify/calibrate them and conduct
-sensitivity analyses before using results as dissertation evidence.
+Streamlit-based, synthetic-only research demonstrator.
 
 Run:
-    pip install streamlit pandas numpy scipy matplotlib
-    streamlit run ao_laccp_scientific_validation_research_ready.py
+    pip install -r requirements.txt
+    streamlit run main.py
+
+Research limitations:
+- Synthetic results do not prove production or real-world efficacy.
+- The action-to-outcome bridge uses declared assumptions.
+- Both policies receive the same held-out scenario inputs.
+- The Q-learning policy is trained before evaluation and then frozen.
+- Statistical tests use independent run-level paired differences.
+- The separate RSA/ECDSA benchmark does not test PQC or validate the
+  original dashboard's dynamic cryptographic switching.
 """
+
 from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass, asdict
+import time
+from dataclasses import asdict, dataclass
 from typing import Dict, List, Tuple
 
 import matplotlib.pyplot as plt
@@ -25,44 +31,135 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from scipy import stats
-import time
-import secrets
 
 try:
     from cryptography.hazmat.primitives.asymmetric import rsa, ec, padding
     from cryptography.hazmat.primitives import hashes
-    from cryptography.exceptions import InvalidSignature
-    CRYPTO_BACKEND_AVAILABLE = True
-except Exception:
-    CRYPTO_BACKEND_AVAILABLE = False
 
-st.set_page_config(page_title="AO-LACCP Scientific Paired Evaluation", page_icon="🛡️", layout="wide")
+    CRYPTO_AVAILABLE = True
+except ImportError:
+    CRYPTO_AVAILABLE = False
 
-# Actions and MDP values copied from the current AO-LACCP full-framework code.
-# Outcome effects below are an explicit evaluation bridge, not present in the original artifact.
+
+# ============================================================
+# STREAMLIT CONFIGURATION
+# ============================================================
+
+st.set_page_config(
+    page_title="AO-LACCP Scientific Paired Evaluation",
+    page_icon="🛡️",
+    layout="wide",
+)
+
+
+# ============================================================
+# MODEL CONFIGURATION
+# ============================================================
+
 ACTIONS = ("Monitor", "Mitigate", "Escalate")
-ACTION_MAP = {"Monitor": "monitor", "Mitigate": "rate_limit", "Escalate": "isolate"}
-ACTION_COST = {"monitor": 0.00, "rate_limit": 0.12, "isolate": 0.32, "crypto_harden": 0.20}
-ACTION_LATENCY_MS = {"monitor": 2.0, "rate_limit": 8.0, "isolate": 18.0, "crypto_harden": 12.0}
-ACTION_MITIGATION = {"monitor": 0.04, "rate_limit": 0.22, "isolate": 0.52, "crypto_harden": 0.30}
-THREAT_TYPES = ("benign", "brute_force", "phishing", "data_exfiltration", "mitm", "zero_day")
-THREAT_PROBS = np.array([0.28, 0.18, 0.16, 0.14, 0.13, 0.11])
-PERSISTENCE = {"benign": 0.10, "brute_force": 0.72, "phishing": 0.66, "data_exfiltration": 0.82, "mitm": 0.78, "zero_day": 0.88}
-ACTION_MATCH = {
-    "benign": {"monitor": 0.75, "rate_limit": 0.60, "isolate": 0.45, "crypto_harden": 0.50},
-    "brute_force": {"monitor": 0.08, "rate_limit": 0.82, "isolate": 0.90, "crypto_harden": 0.10},
-    "phishing": {"monitor": 0.12, "rate_limit": 0.35, "isolate": 0.70, "crypto_harden": 0.10},
-    "data_exfiltration": {"monitor": 0.05, "rate_limit": 0.50, "isolate": 0.92, "crypto_harden": 0.15},
-    "mitm": {"monitor": 0.08, "rate_limit": 0.25, "isolate": 0.78, "crypto_harden": 0.86},
-    "zero_day": {"monitor": 0.08, "rate_limit": 0.25, "isolate": 0.80, "crypto_harden": 0.72},
+
+ACTION_MAP = {
+    "Monitor": "monitor",
+    "Mitigate": "rate_limit",
+    "Escalate": "isolate",
 }
-# Exact illustrative transition matrix in ao_laccp_full_framework_updated.py.
-ARTIFACT_TRANSITIONS = {"Low": np.array([0.70, 0.25, 0.05]),
-                        "Medium": np.array([0.30, 0.50, 0.20]),
-                        "High": np.array([0.10, 0.40, 0.50])}
-ARTIFACT_REWARDS = {("Low", "Monitor"): 10.0, ("Medium", "Mitigate"): 20.0,
-                    ("High", "Escalate"): 30.0}
+
+ACTION_COST = {
+    "monitor": 0.00,
+    "rate_limit": 0.12,
+    "isolate": 0.32,
+}
+
+ACTION_LATENCY_MS = {
+    "monitor": 2.0,
+    "rate_limit": 8.0,
+    "isolate": 18.0,
+}
+
+ACTION_MITIGATION = {
+    "monitor": 0.04,
+    "rate_limit": 0.22,
+    "isolate": 0.52,
+}
+
+THREAT_TYPES = (
+    "benign",
+    "brute_force",
+    "phishing",
+    "data_exfiltration",
+    "mitm",
+    "zero_day",
+)
+
+THREAT_PROBS = np.array(
+    [0.28, 0.18, 0.16, 0.14, 0.13, 0.11]
+)
+
+PERSISTENCE = {
+    "benign": 0.10,
+    "brute_force": 0.72,
+    "phishing": 0.66,
+    "data_exfiltration": 0.82,
+    "mitm": 0.78,
+    "zero_day": 0.88,
+}
+
+ACTION_MATCH = {
+    "benign": {
+        "monitor": 0.75,
+        "rate_limit": 0.60,
+        "isolate": 0.45,
+    },
+    "brute_force": {
+        "monitor": 0.08,
+        "rate_limit": 0.82,
+        "isolate": 0.90,
+    },
+    "phishing": {
+        "monitor": 0.12,
+        "rate_limit": 0.35,
+        "isolate": 0.70,
+    },
+    "data_exfiltration": {
+        "monitor": 0.05,
+        "rate_limit": 0.50,
+        "isolate": 0.92,
+    },
+    "mitm": {
+        "monitor": 0.08,
+        "rate_limit": 0.25,
+        "isolate": 0.78,
+    },
+    "zero_day": {
+        "monitor": 0.08,
+        "rate_limit": 0.25,
+        "isolate": 0.80,
+    },
+}
+
+# Illustrative state-only transition probabilities.
+# They are assumptions unless empirically calibrated.
+ARTIFACT_TRANSITIONS = {
+    "Low": np.array([0.70, 0.25, 0.05]),
+    "Medium": np.array([0.30, 0.50, 0.20]),
+    "High": np.array([0.10, 0.40, 0.50]),
+}
+
+ARTIFACT_REWARDS = {
+    ("Low", "Monitor"): 10.0,
+    ("Medium", "Mitigate"): 20.0,
+    ("High", "Escalate"): 30.0,
+}
+
 BASE_REWARD_FALLBACK = -5.0
+
+POLICY_BASELINE = "Baseline"
+POLICY_AO = "AO-LACCP Q-learning"
+
+
+# ============================================================
+# SCENARIO STRUCTURE
+# ============================================================
 
 @dataclass(frozen=True)
 class Scenario:
@@ -79,650 +176,2182 @@ class Scenario:
     service_capacity: float
 
 
-def clip01(x: float) -> float:
-    return float(np.clip(x, 0.0, 1.0))
+def clip01(value: float) -> float:
+    """Restrict a numeric value to the interval [0, 1]."""
+    return float(np.clip(value, 0.0, 1.0))
 
 
-def generate_scenarios(seed: int, run_id: int, n: int) -> List[Scenario]:
+# ============================================================
+# SYNTHETIC SCENARIO GENERATION
+# ============================================================
+
+def generate_scenarios(
+    seed: int,
+    run_id: int,
+    n: int,
+) -> List[Scenario]:
+    """Generate synthetic scenarios using declared distributions."""
+
     rng = np.random.default_rng(seed)
-    out = []
-    ranges = {"benign": (0.02, 0.22), "brute_force": (0.45, 0.95), "phishing": (0.35, 0.88),
-              "data_exfiltration": (0.55, 0.98), "mitm": (0.48, 0.96), "zero_day": (0.60, 1.00)}
+
+    severity_ranges = {
+        "benign": (0.02, 0.22),
+        "brute_force": (0.45, 0.95),
+        "phishing": (0.35, 0.88),
+        "data_exfiltration": (0.55, 0.98),
+        "mitm": (0.48, 0.96),
+        "zero_day": (0.60, 1.00),
+    }
+
+    scenarios = []
+
     for i in range(n):
-        threat = str(rng.choice(THREAT_TYPES, p=THREAT_PROBS))
-        lo, hi = ranges[threat]
-        sev = float(rng.uniform(lo, hi))
-        initial = clip01(0.45 * sev + 0.25 * rng.beta(2.0, 2.2) + 0.15)
-        out.append(Scenario(
-            run_id=run_id, scenario_id=i, threat_type=threat, threat_severity=sev,
-            initial_risk=initial, workload=float(rng.uniform(.20, 1.0)),
-            network_load=float(rng.uniform(.15, 1.0)), network_noise=float(rng.normal(0, 1)),
-            threat_signal=clip01(.72 * sev + rng.normal(0, .12)),
-            crypto_pressure=clip01((.75 if threat in ("mitm", "zero_day") else .25) + rng.normal(0, .15)),
-            service_capacity=float(rng.uniform(.75, 1.0))))
-    return out
+
+        threat = str(
+            rng.choice(THREAT_TYPES, p=THREAT_PROBS)
+        )
+
+        low, high = severity_ranges[threat]
+
+        severity = float(
+            rng.uniform(low, high)
+        )
+
+        initial_risk = clip01(
+            0.45 * severity
+            + 0.25 * rng.beta(2.0, 2.2)
+            + 0.15
+        )
+
+        threat_signal = clip01(
+            0.72 * severity
+            + rng.normal(0, 0.12)
+        )
+
+        crypto_pressure = clip01(
+            (
+                0.75
+                if threat in ("mitm", "zero_day")
+                else 0.25
+            )
+            + rng.normal(0, 0.15)
+        )
+
+        scenarios.append(
+            Scenario(
+                run_id=run_id,
+                scenario_id=i,
+                threat_type=threat,
+                threat_severity=severity,
+                initial_risk=initial_risk,
+                workload=float(
+                    rng.uniform(0.20, 1.0)
+                ),
+                network_load=float(
+                    rng.uniform(0.15, 1.0)
+                ),
+                network_noise=float(
+                    rng.normal(0, 1)
+                ),
+                threat_signal=threat_signal,
+                crypto_pressure=crypto_pressure,
+                service_capacity=float(
+                    rng.uniform(0.75, 1.0)
+                ),
+            )
+        )
+
+    return scenarios
 
 
-def state_of(s: Scenario) -> str:
-    """Map scenario features to the original artifact's Low/Medium/High risk states."""
-    risk_proxy = clip01(.55 * s.initial_risk + .30 * s.threat_signal + .15 * s.threat_severity)
-    return "Low" if risk_proxy < .35 else ("Medium" if risk_proxy < .65 else "High")
+# ============================================================
+# STATE MAPPING AND BASELINE POLICY
+# ============================================================
+
+def state_of(scenario: Scenario) -> str:
+    """Map scenario characteristics to Low, Medium, or High."""
+
+    risk_proxy = clip01(
+        0.55 * scenario.initial_risk
+        + 0.30 * scenario.threat_signal
+        + 0.15 * scenario.threat_severity
+    )
+
+    if risk_proxy < 0.35:
+        return "Low"
+
+    if risk_proxy < 0.65:
+        return "Medium"
+
+    return "High"
 
 
-def baseline_policy(s: Scenario) -> str:
-    """Explicit fixed-threshold baseline; this baseline is not defined by the original artifact."""
-    if s.initial_risk >= .72 or s.threat_signal >= .82:
+def baseline_policy(scenario: Scenario) -> str:
+    """
+    Fixed-threshold comparator.
+
+    This is an explicitly defined research baseline,
+    not a claim to represent every production SOC.
+    """
+
+    if (
+        scenario.initial_risk >= 0.72
+        or scenario.threat_signal >= 0.82
+    ):
         return "Escalate"
-    if s.threat_signal >= .58:
+
+    if scenario.threat_signal >= 0.58:
         return "Mitigate"
+
     return "Monitor"
 
 
-def outcome(s: Scenario, action_name: str, effectiveness_scale: float = 1.0,
-            transition_noise_scale: float = 1.0,
-            calibration_factors: Dict[str, float] | None = None) -> Dict[str, float]:
-    """Shared synthetic outcome equations; effect sizes are assumptions, not calibrated efficacy."""
-    action = ACTION_MAP.get(action_name, action_name)
-    persistence = PERSISTENCE[s.threat_type]
+# ============================================================
+# SHARED SYNTHETIC OUTCOME MODEL
+# ============================================================
+
+def outcome(
+    scenario: Scenario,
+    action_name: str,
+    effectiveness_scale: float = 1.0,
+    noise_scale: float = 1.0,
+    calibration_factors: Dict[str, float] | None = None,
+) -> Dict[str, float]:
+    """
+    Calculate modeled outcomes for either policy.
+
+    These equations are assumptions. They are not empirically
+    validated unless supported by suitable calibration data.
+    """
+
+    action = ACTION_MAP[action_name]
+
     calibration_factors = calibration_factors or {}
-    factor = float(calibration_factors.get(action, 1.0))
-    mitigation = np.clip(ACTION_MITIGATION[action] * ACTION_MATCH[s.threat_type][action] * effectiveness_scale * factor, 0, .95)
-    disturbance = .035 * s.network_noise * transition_noise_scale + .045 * max(0.0, s.network_load - .70) + .035 * s.workload
-    residual = s.threat_severity * persistence * (1.0 - mitigation)
-    risk = clip01(.48 * s.initial_risk + .44 * residual + disturbance)
-    base_latency = (35.0 + 85.0 * s.network_load + 42.0 * s.workload
-                    + 18.0 * (1.0 / max(s.service_capacity, .50) - 1.0) + 2.5 * s.network_noise)
-    latency = max(1.0, base_latency + ACTION_LATENCY_MS[action] + 18.0 * ACTION_COST[action])
-    service_impact = clip01(.10 * s.workload + .42 * ACTION_COST[action]
-                            + .10 * max(0.0, s.network_load - s.service_capacity))
-    return {"resulting_risk": risk, "simulated_latency_ms": latency,
-            "service_impact_proxy": service_impact, "action_cost_proxy": ACTION_COST[action],
-            "selected_action_code": float(ACTIONS.index(action_name)),
-            "residual_threat_proxy": residual}
+
+    factor = float(
+        calibration_factors.get(action, 1.0)
+    )
+
+    mitigation = np.clip(
+        ACTION_MITIGATION[action]
+        * ACTION_MATCH[scenario.threat_type][action]
+        * effectiveness_scale
+        * factor,
+        0.0,
+        0.95,
+    )
+
+    disturbance = (
+        0.035
+        * scenario.network_noise
+        * noise_scale
+        + 0.045
+        * max(0.0, scenario.network_load - 0.70)
+        + 0.035 * scenario.workload
+    )
+
+    residual_threat = (
+        scenario.threat_severity
+        * PERSISTENCE[scenario.threat_type]
+        * (1.0 - mitigation)
+    )
+
+    risk = clip01(
+        0.48 * scenario.initial_risk
+        + 0.44 * residual_threat
+        + disturbance
+    )
+
+    base_latency = (
+        35.0
+        + 85.0 * scenario.network_load
+        + 42.0 * scenario.workload
+        + 18.0
+        * (
+            1.0
+            / max(scenario.service_capacity, 0.50)
+            - 1.0
+        )
+        + 2.5 * scenario.network_noise
+    )
+
+    latency = max(
+        1.0,
+        base_latency
+        + ACTION_LATENCY_MS[action]
+        + 18.0 * ACTION_COST[action],
+    )
+
+    service_impact = clip01(
+        0.10 * scenario.workload
+        + 0.42 * ACTION_COST[action]
+        + 0.10
+        * max(
+            0.0,
+            scenario.network_load
+            - scenario.service_capacity,
+        )
+    )
+
+    return {
+        "resulting_risk": risk,
+        "simulated_latency_ms": latency,
+        "service_impact_proxy": service_impact,
+        "action_cost_proxy": ACTION_COST[action],
+        "residual_threat_proxy": residual_threat,
+    }
 
 
-def reward_for(state: str, action: str, reward_scale: float = 1.0) -> float:
-    """Original artifact reward table, optionally scaled for predeclared sensitivity tests."""
-    return float(ARTIFACT_REWARDS.get((state, action), BASE_REWARD_FALLBACK) * reward_scale)
+# ============================================================
+# Q-LEARNING
+# ============================================================
+
+def reward_for(
+    state: str,
+    action: str,
+    reward_scale: float = 1.0,
+) -> float:
+
+    return float(
+        ARTIFACT_REWARDS.get(
+            (state, action),
+            BASE_REWARD_FALLBACK,
+        )
+        * reward_scale
+    )
 
 
-def mdp_transition(state: str, rng: np.random.Generator, transition_mix: float = 1.0) -> str:
-    """Original artifact transition model: state-based probabilities, action-independent.
-
-    transition_mix=1 uses original rows exactly; values below 1 blend rows toward a
-    uniform distribution for sensitivity analysis. This is a model assumption, not calibration.
+def mdp_transition(
+    state: str,
+    rng: np.random.Generator,
+    transition_mix: float = 1.0,
+) -> str:
     """
-    p = ARTIFACT_TRANSITIONS[state].astype(float)
+    Sample the next state from the declared transition row.
+
+    IMPORTANT:
+    Transitions depend on the current state, not on the action.
+    """
+
+    probabilities = ARTIFACT_TRANSITIONS[state].astype(float)
+
     uniform = np.ones(3) / 3.0
-    mix = float(np.clip(transition_mix, 0.0, 1.0))
-    p = mix * p + (1.0 - mix) * uniform
-    p = p / p.sum()
-    return str(rng.choice(["Low", "Medium", "High"], p=p))
+
+    mix = float(
+        np.clip(transition_mix, 0.0, 1.0)
+    )
+
+    probabilities = (
+        mix * probabilities
+        + (1.0 - mix) * uniform
+    )
+
+    probabilities /= probabilities.sum()
+
+    return str(
+        rng.choice(
+            ["Low", "Medium", "High"],
+            p=probabilities,
+        )
+    )
 
 
-def representative_scenario(state: str, seed: int) -> Scenario:
+def train_q_policy(
+    seed: int,
+    episodes: int,
+    steps_per_episode: int,
+    alpha: float,
+    gamma: float,
+    epsilon: float,
+    transition_mix: float = 1.0,
+) -> pd.DataFrame:
+    """Train a tabular Q-learning policy."""
+
     rng = np.random.default_rng(seed)
-    risk = {"Low": .20, "Medium": .50, "High": .82}[state]
-    threat = {"Low": "benign", "Medium": "brute_force", "High": "zero_day"}[state]
-    severity = {"benign": .12, "brute_force": .70, "zero_day": .88}[threat]
-    return Scenario(0, 0, threat, severity, risk, float(rng.uniform(.3, .8)),
-                    float(rng.uniform(.2, .8)), 0.0, clip01(risk), .30, .90)
 
-
-def train_q_policy(seed: int, episodes: int, steps_per_episode: int,
-                   weights: Dict[str, float], alpha: float, gamma: float, epsilon: float,
-                   transition_mix: float = 1.0, reward_scale: float = 1.0) -> pd.DataFrame:
-    """Reproduce original artifact's state/action/reward/transition structure.
-
-    The original artifact uses 3 risk states, Monitor/Mitigate/Escalate,
-    state-only transitions, reward +10/+20/+30 for matching actions and -5 otherwise.
-    Defaults in its code are 300 episodes x 10 steps, alpha=.1, gamma=.9, epsilon=.2.
-    """
-    rng = np.random.default_rng(seed)
     states = ["Low", "Medium", "High"]
-    q = pd.DataFrame(0.0, index=states, columns=ACTIONS)
-    for episode in range(episodes):
-        state = str(rng.choice(states))
-        for step in range(steps_per_episode):
+
+    q = pd.DataFrame(
+        0.0,
+        index=states,
+        columns=ACTIONS,
+    )
+
+    for _ in range(episodes):
+
+        state = str(
+            rng.choice(states)
+        )
+
+        for _ in range(steps_per_episode):
+
+            # Epsilon-greedy exploration during training.
             if rng.random() < epsilon:
-                action = str(rng.choice(ACTIONS))
+
+                action = str(
+                    rng.choice(ACTIONS)
+                )
+
             else:
-                values = q.loc[state].to_numpy(dtype=float)
-                best = np.flatnonzero(np.isclose(values, values.max()))
-                action = ACTIONS[int(rng.choice(best))]
-            reward = reward_for(state, action, reward_scale)
-            next_state = mdp_transition(state, rng, transition_mix)
-            old = float(q.loc[state, action])
-            q.loc[state, action] = old + alpha * (reward + gamma * float(q.loc[next_state].max()) - old)
+
+                values = q.loc[state].to_numpy(
+                    dtype=float
+                )
+
+                best = np.flatnonzero(
+                    np.isclose(
+                        values,
+                        values.max(),
+                    )
+                )
+
+                action = ACTIONS[
+                    int(rng.choice(best))
+                ]
+
+            reward = reward_for(
+                state,
+                action,
+            )
+
+            next_state = mdp_transition(
+                state,
+                rng,
+                transition_mix,
+            )
+
+            old_value = float(
+                q.loc[state, action]
+            )
+
+            q.loc[state, action] = (
+                old_value
+                + alpha
+                * (
+                    reward
+                    + gamma
+                    * float(q.loc[next_state].max())
+                    - old_value
+                )
+            )
+
             state = next_state
+
     return q
 
 
-def mdp_transition_table(transition_mix: float = 1.0) -> pd.DataFrame:
+def q_policy(
+    scenario: Scenario,
+    q: pd.DataFrame,
+) -> str:
+    """Choose the highest-Q-value action for the scenario state."""
+
+    return str(
+        q.loc[state_of(scenario)].idxmax()
+    )
+
+
+# ============================================================
+# PAIRED EVALUATION
+# ============================================================
+
+def evaluate(
+    seed: int,
+    n_runs: int,
+    n_per_run: int,
+    q: pd.DataFrame,
+    effectiveness_scale: float = 1.0,
+    noise_scale: float = 1.0,
+    calibration_factors: Dict[str, float] | None = None,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Evaluate baseline and Q-learning on identical scenarios.
+
+    The same scenario is passed to both policies. Pairing is
+    verified before the detailed and wide dataframes are returned.
+    """
+
     rows = []
-    for state, probs in ARTIFACT_TRANSITIONS.items():
-        uniform = np.ones(3) / 3.0
-        p = transition_mix * probs + (1.0 - transition_mix) * uniform
-        p = p / p.sum()
-        for nxt, prob in zip(["Low", "Medium", "High"], p):
-            rows.append({"Current state": state, "Next state": nxt, "Transition probability": float(prob),
-                         "Source": "Original artifact configured row" if transition_mix == 1.0 else "Sensitivity perturbation"})
-    return pd.DataFrame(rows)
 
+    input_columns = [
+        "threat_type",
+        "threat_severity",
+        "initial_risk",
+        "workload",
+        "network_load",
+        "network_noise",
+        "threat_signal",
+        "crypto_pressure",
+        "service_capacity",
+    ]
 
-def q_policy(s: Scenario, q: pd.DataFrame) -> str:
-    return str(q.loc[state_of(s)].idxmax())
-
-
-def evaluate(seed: int, n_runs: int, n_per_run: int, q: pd.DataFrame,
-             effectiveness_scale: float = 1.0, transition_noise_scale: float = 1.0,
-             calibration_factors: Dict[str, float] | None = None) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    rows = []
     for run in range(1, n_runs + 1):
-        scenarios = generate_scenarios(seed + run * 100_003, run, n_per_run)
-        for s in scenarios:
-            for name, action in (("Baseline", baseline_policy(s)), ("AO-LACCP artifact-aligned Q-learning", q_policy(s, q))):
-                rows.append({**asdict(s), "policy": name, "selected_action": action,
-                             **outcome(s, action, effectiveness_scale, transition_noise_scale, calibration_factors)})
+
+        scenarios = generate_scenarios(
+            seed + run * 100_003,
+            run,
+            n_per_run,
+        )
+
+        for scenario in scenarios:
+
+            policies = [
+                (
+                    POLICY_BASELINE,
+                    baseline_policy(scenario),
+                ),
+                (
+                    POLICY_AO,
+                    q_policy(scenario, q),
+                ),
+            ]
+
+            for policy_name, action in policies:
+
+                modeled_outcome = outcome(
+                    scenario,
+                    action,
+                    effectiveness_scale,
+                    noise_scale,
+                    calibration_factors,
+                )
+
+                rows.append(
+                    {
+                        **asdict(scenario),
+                        "policy": policy_name,
+                        "selected_action": action,
+                        **modeled_outcome,
+                    }
+                )
+
     detail = pd.DataFrame(rows)
-    key = ["run_id", "scenario_id"]
-    counts = detail.groupby(key)["policy"].nunique()
-    if not counts.eq(2).all():
-        raise RuntimeError("Pairing check failed: each scenario must have both policies.")
-    inputs = ["threat_type", "threat_severity", "initial_risk", "workload", "network_load", "network_noise", "threat_signal", "crypto_pressure", "service_capacity"]
-    for col in inputs:
-        if detail.groupby(key)[col].nunique().max() != 1:
-            raise RuntimeError(f"Pairing check failed: input {col} differs within a pair.")
-    metrics = ["resulting_risk", "simulated_latency_ms", "service_impact_proxy", "action_cost_proxy", "selected_action_code"]
-    wide = detail.pivot(index=key, columns="policy", values=metrics)
-    wide.columns = [f"{m}__{p}" for m, p in wide.columns]
+
+    keys = ["run_id", "scenario_id"]
+
+    # Verify that both policies were evaluated for every scenario.
+    policy_counts = (
+        detail.groupby(keys)["policy"].nunique()
+    )
+
+    if not policy_counts.eq(2).all():
+        raise RuntimeError(
+            "Pairing check failed: every scenario must have both policies."
+        )
+
+    # Verify that paired scenarios have identical input values.
+    for column in input_columns:
+
+        counts = (
+            detail.groupby(keys)[column].nunique()
+        )
+
+        if counts.max() != 1:
+            raise RuntimeError(
+                f"Pairing check failed for input: {column}"
+            )
+
+    metrics = [
+        "resulting_risk",
+        "simulated_latency_ms",
+        "service_impact_proxy",
+        "action_cost_proxy",
+    ]
+
+    wide = detail.pivot(
+        index=keys,
+        columns="policy",
+        values=metrics,
+    )
+
+    wide.columns = [
+        f"{metric}__{policy}"
+        for metric, policy in wide.columns
+    ]
+
     wide = wide.reset_index()
-    for m in metrics:
-        wide[f"{m}__diff_AO_minus_baseline"] = wide[f"{m}__AO-LACCP artifact-aligned Q-learning"] - wide[f"{m}__Baseline"]
+
+    for metric in metrics:
+
+        ao_col = f"{metric}__{POLICY_AO}"
+        baseline_col = f"{metric}__{POLICY_BASELINE}"
+
+        wide[
+            f"{metric}__diff_AO_minus_baseline"
+        ] = wide[ao_col] - wide[baseline_col]
+
     return detail, wide
 
 
-def holm_adjust(p_values: List[float]) -> List[float]:
-    """Holm step-down family-wise error correction; preserves input order."""
-    p = np.asarray(p_values, dtype=float)
-    out = np.full(len(p), np.nan)
-    valid = np.flatnonzero(np.isfinite(p))
+# ============================================================
+# STATISTICAL ANALYSIS
+# ============================================================
+
+def holm_adjust(
+    p_values: List[float],
+) -> List[float]:
+    """Holm step-down correction for multiple hypothesis tests."""
+
+    p = np.asarray(
+        p_values,
+        dtype=float,
+    )
+
+    adjusted = np.full(
+        len(p),
+        np.nan,
+    )
+
+    valid = np.flatnonzero(
+        np.isfinite(p)
+    )
+
     if len(valid) == 0:
-        return out.tolist()
-    order = valid[np.argsort(p[valid])]
-    running = 0.0
-    m = len(order)
-    for rank, idx in enumerate(order):
-        adj = min(1.0, (m - rank) * p[idx])
-        running = max(running, adj)
-        out[idx] = running
-    return out.tolist()
+        return adjusted.tolist()
 
-
-def summarize_runs(wide: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """Primary inference uses independent run-level means, avoiding scenario pseudoreplication."""
-    metrics = [
-        ("resulting_risk", "Risk (lower is better)"),
-        ("simulated_latency_ms", "Simulated latency (ms; lower is better)"),
-        ("service_impact_proxy", "Service-impact proxy (lower is better)"),
-        ("action_cost_proxy", "Action-cost proxy (lower is better)"),
+    order = valid[
+        np.argsort(p[valid])
     ]
-    diff_cols = [f"{m}__diff_AO_minus_baseline" for m, _ in metrics]
-    run_means = wide.groupby("run_id")[diff_cols].mean().reset_index()
-    rows = []
-    raw_ps = []
-    for m, label in metrics:
-        d = run_means[f"{m}__diff_AO_minus_baseline"].to_numpy(float)
-        n = len(d)
-        mean = float(np.mean(d))
-        sd = float(np.std(d, ddof=1)) if n > 1 else np.nan
-        se = sd / np.sqrt(n) if n > 1 else np.nan
-        crit = float(stats.t.ppf(.975, n - 1)) if n > 1 else np.nan
-        lo, hi = (mean - crit * se, mean + crit * se) if n > 1 else (np.nan, np.nan)
-        if n > 1 and sd > 0:
-            t_stat, p = stats.ttest_1samp(d, 0.0)
-            dz = mean / sd
-        else:
-            t_stat, p, dz = np.nan, np.nan, np.nan
-        # Paired bootstrap over independent run-level mean differences.
-        brng = np.random.default_rng(81000 + len(rows))
-        if n > 1:
-            boot = np.mean(brng.choice(d, size=(10000, n), replace=True), axis=1)
-            blo, bhi = np.quantile(boot, [.025, .975])
-        else:
-            blo, bhi = np.nan, np.nan
-        raw_ps.append(float(p) if np.isfinite(p) else np.nan)
-        rows.append({"Metric": label, "Independent runs (N)": n, "Mean run-level paired difference (AO - baseline)": mean,
-                     "95% t CI low": lo, "95% t CI high": hi, "95% run-bootstrap CI low": blo,
-                     "95% run-bootstrap CI high": bhi, "Run-level Cohen dz": dz, "Paired run-level t statistic": t_stat,
-                     "Raw p-value": p})
-    adjusted = holm_adjust(raw_ps)
-    for row, p_adj in zip(rows, adjusted):
-        row["Holm-adjusted p-value"] = p_adj
-    return pd.DataFrame(rows), run_means
+
+    running_max = 0.0
+    number_tests = len(order)
+
+    for rank, index in enumerate(order):
+
+        corrected = min(
+            1.0,
+            (number_tests - rank) * p[index],
+        )
+
+        running_max = max(
+            running_max,
+            corrected,
+        )
+
+        adjusted[index] = running_max
+
+    return adjusted.tolist()
 
 
-
-def paired_repeated_measures_anova(detail: pd.DataFrame) -> pd.DataFrame:
-    """Two-policy repeated-measures ANOVA equivalent (F=t^2) on independent run means.
-
-    A conventional independent-groups one-way ANOVA is not appropriate because both
-    policies are evaluated on the same scenarios. With exactly two repeated conditions,
-    the repeated-measures ANOVA test is equivalent to the paired t-test.
+def summarize_runs(
+    wide: pd.DataFrame,
+) -> pd.DataFrame:
     """
+    Perform inference on independent run-level paired differences.
+
+    Scenarios within a run are not treated as independent replicates.
+    """
+
+    metric_definitions = [
+        (
+            "resulting_risk",
+            "Risk (lower is better)",
+        ),
+        (
+            "simulated_latency_ms",
+            "Simulated latency (ms; lower is better)",
+        ),
+        (
+            "service_impact_proxy",
+            "Service-impact proxy (lower is better)",
+        ),
+        (
+            "action_cost_proxy",
+            "Action-cost proxy (lower is better)",
+        ),
+    ]
+
+    difference_columns = [
+        f"{metric}__diff_AO_minus_baseline"
+        for metric, _ in metric_definitions
+    ]
+
+    run_means = (
+        wide.groupby("run_id")[difference_columns]
+        .mean()
+        .reset_index()
+    )
+
     rows = []
-    for metric, label in [("resulting_risk", "Cyber risk"),
-                          ("simulated_latency_ms", "Response latency")]:
-        rm = detail.groupby(["run_id", "policy"])[metric].mean().unstack("policy")
-        if "Baseline" not in rm or "AO-LACCP artifact-aligned Q-learning" not in rm:
-            continue
-        paired = rm[["Baseline", "AO-LACCP artifact-aligned Q-learning"]].dropna()
-        if len(paired) < 2:
-            continue
-        diffs = paired["AO-LACCP artifact-aligned Q-learning"] - paired["Baseline"]
-        t_stat, p_value = stats.ttest_rel(paired["AO-LACCP artifact-aligned Q-learning"], paired["Baseline"])
-        rows.append({"Outcome": label, "Independent run pairs": len(paired),
-                     "F statistic (repeated-measures; 1, N-1 df)": float(t_stat ** 2),
-                     "df1": 1, "df2": len(paired) - 1, "p-value": float(p_value),
-                     "Interpretation note": "Run-level paired analysis; model-based synthetic outcome."})
+    raw_p_values = []
+
+    for metric, label in metric_definitions:
+
+        differences = run_means[
+            f"{metric}__diff_AO_minus_baseline"
+        ].to_numpy(dtype=float)
+
+        n = len(differences)
+
+        mean_difference = float(
+            np.mean(differences)
+        )
+
+        sd = (
+            float(np.std(differences, ddof=1))
+            if n > 1
+            else np.nan
+        )
+
+        se = (
+            sd / np.sqrt(n)
+            if n > 1
+            else np.nan
+        )
+
+        critical = (
+            float(stats.t.ppf(0.975, n - 1))
+            if n > 1
+            else np.nan
+        )
+
+        if n > 1:
+
+            ci_low = (
+                mean_difference
+                - critical * se
+            )
+
+            ci_high = (
+                mean_difference
+                + critical * se
+            )
+
+        else:
+
+            ci_low = np.nan
+            ci_high = np.nan
+
+        if n > 1 and sd > 0:
+
+            t_statistic, p_value = (
+                stats.ttest_1samp(
+                    differences,
+                    0.0,
+                )
+            )
+
+            cohens_dz = mean_difference / sd
+
+        else:
+
+            t_statistic = np.nan
+            p_value = np.nan
+            cohens_dz = np.nan
+
+        # Bootstrap the independent run-level differences.
+        if n > 1:
+
+            rng = np.random.default_rng(
+                81_000 + len(rows)
+            )
+
+            bootstrap_means = np.mean(
+                rng.choice(
+                    differences,
+                    size=(10_000, n),
+                    replace=True,
+                ),
+                axis=1,
+            )
+
+            bootstrap_low, bootstrap_high = (
+                np.quantile(
+                    bootstrap_means,
+                    [0.025, 0.975],
+                )
+            )
+
+        else:
+
+            bootstrap_low = np.nan
+            bootstrap_high = np.nan
+
+        raw_p_values.append(
+            float(p_value)
+            if np.isfinite(p_value)
+            else np.nan
+        )
+
+        rows.append(
+            {
+                "Metric": label,
+                "Independent runs (N)": n,
+                "Mean paired difference (AO - baseline)": mean_difference,
+                "95% t CI low": ci_low,
+                "95% t CI high": ci_high,
+                "95% run-bootstrap CI low": bootstrap_low,
+                "95% run-bootstrap CI high": bootstrap_high,
+                "Run-level Cohen dz": cohens_dz,
+                "Paired run-level t statistic": t_statistic,
+                "Raw p-value": p_value,
+            }
+        )
+
+    adjusted_p_values = holm_adjust(
+        raw_p_values
+    )
+
+    for row, adjusted_p in zip(
+        rows,
+        adjusted_p_values,
+    ):
+        row["Holm-adjusted p-value"] = adjusted_p
+
     return pd.DataFrame(rows)
 
 
-def exploratory_risk_regression(detail: pd.DataFrame, wide: pd.DataFrame) -> Tuple[pd.DataFrame, float]:
-    """OLS R² for scenario-level paired risk difference; descriptive/exploratory only."""
-    base = detail.loc[detail["policy"] == "Baseline",
-                      ["run_id", "scenario_id", "threat_severity", "initial_risk", "workload",
-                       "network_load", "threat_signal", "crypto_pressure"]].copy()
-    diffs = wide[["run_id", "scenario_id", "resulting_risk__diff_AO_minus_baseline"]]
-    df = base.merge(diffs, on=["run_id", "scenario_id"], validate="one_to_one").dropna()
-    features = ["threat_severity", "initial_risk", "workload", "network_load", "threat_signal", "crypto_pressure"]
-    X = df[features].to_numpy(float)
-    X = np.column_stack([np.ones(len(X)), X])
-    y = df["resulting_risk__diff_AO_minus_baseline"].to_numpy(float)
-    coef, *_ = np.linalg.lstsq(X, y, rcond=None)
-    pred = X @ coef
-    ss_res = float(np.sum((y - pred) ** 2))
-    ss_tot = float(np.sum((y - y.mean()) ** 2))
-    r2 = float(1 - ss_res / ss_tot) if ss_tot > 0 else float("nan")
-    table = pd.DataFrame({"Term": ["Intercept"] + features, "Coefficient": coef})
-    return table, r2
-
-
-
-def parse_action_calibration(uploaded_file) -> Tuple[Dict[str, float], pd.DataFrame, str]:
-    """Derive action-effect multipliers from user-supplied comparable empirical observations.
-
-    Required CSV columns: action, observed_mitigation_fraction. Actions may be
-    Monitor/Mitigate/Escalate or monitor/rate_limit/isolate. Values must be 0..1.
+def repeated_measures_results(
+    detail: pd.DataFrame,
+) -> pd.DataFrame:
     """
-    df = pd.read_csv(uploaded_file)
-    required = {"action", "observed_mitigation_fraction"}
-    if not required.issubset(df.columns):
-        raise ValueError("Calibration CSV must contain columns: action, observed_mitigation_fraction")
-    df = df.copy()
-    df["observed_mitigation_fraction"] = pd.to_numeric(df["observed_mitigation_fraction"], errors="coerce")
-    if df["observed_mitigation_fraction"].isna().any() or not df["observed_mitigation_fraction"].between(0, 1).all():
-        raise ValueError("observed_mitigation_fraction must be numeric and between 0 and 1")
-    mapping = {"monitor": "monitor", "mitigate": "rate_limit", "rate_limit": "rate_limit",
-               "escalate": "isolate", "isolate": "isolate"}
-    df["action_normalized"] = df["action"].astype(str).str.strip().str.lower().map(mapping)
-    if df["action_normalized"].isna().any():
-        raise ValueError("action values must be Monitor/Mitigate/Escalate or monitor/rate_limit/isolate")
-    means = df.groupby("action_normalized")["observed_mitigation_fraction"].agg(["mean", "std", "count"]).reset_index()
-    factors = {}
-    for _, row in means.iterrows():
-        action = row["action_normalized"]
-        factors[action] = float(row["mean"] / max(ACTION_MITIGATION[action], 1e-9))
-    note = ("Calibration multipliers were derived from the uploaded observed mitigation fractions. "
-            "Use only observations measured under comparable conditions with a documented outcome definition. "
-            "This does not calibrate transition probabilities or latency unless those are separately observed and modeled.")
-    return factors, means, note
+    For two paired policy conditions, repeated-measures ANOVA
+    is equivalent to a paired t-test, with F = t squared.
+    """
 
-def run_sensitivity_analysis(seed: int, episodes: int, steps: int, weights: Dict[str, float],
-                             alpha: float, gamma: float, epsilon: float, n_runs: int, n_per_run: int,
-                             calibration_factors: Dict[str, float] | None = None) -> pd.DataFrame:
-    """Genuine one-factor-at-a-time reruns: retrain and reevaluate for each assumption set."""
+    rows = []
+
+    for metric, label in [
+        ("resulting_risk", "Cyber risk"),
+        ("simulated_latency_ms", "Simulated latency"),
+    ]:
+
+        run_means = (
+            detail.groupby(
+                ["run_id", "policy"]
+            )[metric]
+            .mean()
+            .unstack("policy")
+        )
+
+        if (
+            POLICY_BASELINE not in run_means.columns
+            or POLICY_AO not in run_means.columns
+        ):
+            continue
+
+        paired = run_means[
+            [POLICY_BASELINE, POLICY_AO]
+        ].dropna()
+
+        if len(paired) < 2:
+            continue
+
+        t_statistic, p_value = stats.ttest_rel(
+            paired[POLICY_AO],
+            paired[POLICY_BASELINE],
+        )
+
+        rows.append(
+            {
+                "Outcome": label,
+                "Independent run pairs": len(paired),
+                "F statistic": float(t_statistic ** 2),
+                "df1": 1,
+                "df2": len(paired) - 1,
+                "p-value": float(p_value),
+                "Note": (
+                    "Run-level paired test on synthetic modeled outcomes."
+                ),
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+def exploratory_risk_regression(
+    detail: pd.DataFrame,
+    wide: pd.DataFrame,
+) -> Tuple[pd.DataFrame, float]:
+    """
+    Exploratory OLS fit for paired scenario-level risk differences.
+
+    This descriptive model is not a causal analysis. Its R-squared
+    does not establish scientific validity of the simulator.
+    """
+
+    baseline_inputs = detail.loc[
+        detail["policy"] == POLICY_BASELINE,
+        [
+            "run_id",
+            "scenario_id",
+            "threat_severity",
+            "initial_risk",
+            "workload",
+            "network_load",
+            "threat_signal",
+            "crypto_pressure",
+        ],
+    ].copy()
+
+    differences = wide[
+        [
+            "run_id",
+            "scenario_id",
+            "resulting_risk__diff_AO_minus_baseline",
+        ]
+    ]
+
+    data = baseline_inputs.merge(
+        differences,
+        on=["run_id", "scenario_id"],
+        validate="one_to_one",
+    ).dropna()
+
+    features = [
+        "threat_severity",
+        "initial_risk",
+        "workload",
+        "network_load",
+        "threat_signal",
+        "crypto_pressure",
+    ]
+
+    x = data[features].to_numpy(dtype=float)
+
+    x = np.column_stack(
+        [np.ones(len(x)), x]
+    )
+
+    y = data[
+        "resulting_risk__diff_AO_minus_baseline"
+    ].to_numpy(dtype=float)
+
+    coefficients, *_ = np.linalg.lstsq(
+        x,
+        y,
+        rcond=None,
+    )
+
+    predictions = x @ coefficients
+
+    residual_ss = float(
+        np.sum((y - predictions) ** 2)
+    )
+
+    total_ss = float(
+        np.sum((y - y.mean()) ** 2)
+    )
+
+    r_squared = (
+        float(1.0 - residual_ss / total_ss)
+        if total_ss > 0
+        else float("nan")
+    )
+
+    table = pd.DataFrame(
+        {
+            "Term": ["Intercept"] + features,
+            "Coefficient": coefficients,
+        }
+    )
+
+    return table, r_squared
+
+
+# ============================================================
+# OPTIONAL EMPIRICAL CALIBRATION
+# ============================================================
+
+def parse_calibration_csv(
+    uploaded_file,
+) -> Tuple[Dict[str, float], pd.DataFrame, str]:
+    """
+    Expected columns:
+        action, observed_mitigation_fraction
+
+    Actions:
+        Monitor / Mitigate / Escalate
+        or monitor / rate_limit / isolate
+
+    Only use documented, comparable observations.
+    """
+
+    df = pd.read_csv(uploaded_file)
+
+    required = {
+        "action",
+        "observed_mitigation_fraction",
+    }
+
+    if not required.issubset(df.columns):
+        raise ValueError(
+            "CSV must contain action and observed_mitigation_fraction."
+        )
+
+    df = df.copy()
+
+    df["observed_mitigation_fraction"] = pd.to_numeric(
+        df["observed_mitigation_fraction"],
+        errors="coerce",
+    )
+
+    values = df[
+        "observed_mitigation_fraction"
+    ]
+
+    if (
+        values.isna().any()
+        or not values.between(0, 1).all()
+    ):
+        raise ValueError(
+            "Mitigation fractions must be numeric values from 0 to 1."
+        )
+
+    action_mapping = {
+        "monitor": "monitor",
+        "mitigate": "rate_limit",
+        "rate_limit": "rate_limit",
+        "escalate": "isolate",
+        "isolate": "isolate",
+    }
+
+    df["action_normalized"] = (
+        df["action"]
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .map(action_mapping)
+    )
+
+    if df["action_normalized"].isna().any():
+        raise ValueError(
+            "Unrecognized action. Use Monitor, Mitigate, Escalate, "
+            "monitor, rate_limit, or isolate."
+        )
+
+    grouped = (
+        df.groupby("action_normalized")[
+            "observed_mitigation_fraction"
+        ]
+        .agg(["mean", "std", "count"])
+        .reset_index()
+    )
+
+    factors = {}
+
+    for _, row in grouped.iterrows():
+
+        action = row["action_normalized"]
+
+        factors[action] = float(
+            row["mean"]
+            / max(ACTION_MITIGATION[action], 1e-9)
+        )
+
+    note = (
+        "Calibration factors depend on the quality and comparability "
+        "of uploaded observations. This process does not calibrate "
+        "transition probabilities or latency."
+    )
+
+    return factors, grouped, note
+
+
+# ============================================================
+# SENSITIVITY ANALYSIS
+# ============================================================
+
+def run_sensitivity_analysis(
+    seed: int,
+    episodes: int,
+    steps: int,
+    alpha: float,
+    gamma: float,
+    epsilon: float,
+    n_runs: int,
+    n_per_run: int,
+    calibration_factors: Dict[str, float] | None,
+) -> pd.DataFrame:
+    """Retrain and reevaluate for each declared parameter variant."""
+
     variants = [
         ("Reference assumptions", 1.00, 1.00, 1.00),
-        ("Transition rows blended 50% toward uniform", 0.50, 1.00, 1.00),
-        ("Transition rows blended 100% toward uniform", 0.00, 1.00, 1.00),
+        ("Transition rows 50% toward uniform", 0.50, 1.00, 1.00),
+        ("Transition rows fully uniform", 0.00, 1.00, 1.00),
         ("Action effectiveness -25%", 1.00, 0.75, 1.00),
         ("Action effectiveness +25%", 1.00, 1.25, 1.00),
         ("Network-noise effect -25%", 1.00, 1.00, 0.75),
         ("Network-noise effect +25%", 1.00, 1.00, 1.25),
     ]
-    rows = []
-    for i, (label, trans_mix, eff_scale, noise_scale) in enumerate(variants):
-        q = train_q_policy(seed + 101_000 + i * 17, episodes, steps, weights, alpha, gamma, epsilon,
-                           transition_mix=trans_mix)
-        detail, wide = evaluate(seed + 202_000 + i * 31, n_runs, n_per_run, q, eff_scale, noise_scale, calibration_factors)
-        run_diff = wide.groupby("run_id")[["resulting_risk__diff_AO_minus_baseline",
-                                            "simulated_latency_ms__diff_AO_minus_baseline"]].mean()
-        rows.append({"Sensitivity condition": label, "Transition mix": trans_mix,
-                     "Action-effect scale": eff_scale, "Network-noise scale": noise_scale,
-                     "Mean paired risk difference (AO - baseline)": run_diff["resulting_risk__diff_AO_minus_baseline"].mean(),
-                     "Mean paired latency difference ms (AO - baseline)": run_diff["simulated_latency_ms__diff_AO_minus_baseline"].mean(),
-                     "Risk direction favors AO?": bool(run_diff["resulting_risk__diff_AO_minus_baseline"].mean() < 0),
-                     "Latency direction favors AO?": bool(run_diff["simulated_latency_ms__diff_AO_minus_baseline"].mean() < 0)})
-    return pd.DataFrame(rows)
+
+    results = []
+
+    # Reuse test scenario seeds across conditions for comparability.
+    common_test_seed = seed + 202_000
+
+    for index, (
+        label,
+        transition_mix,
+        effectiveness_scale,
+        noise_scale,
+    ) in enumerate(variants):
+
+        q = train_q_policy(
+            seed + 101_000 + index * 17,
+            episodes,
+            steps,
+            alpha,
+            gamma,
+            epsilon,
+            transition_mix=transition_mix,
+        )
+
+        _, wide = evaluate(
+            common_test_seed,
+            n_runs,
+            n_per_run,
+            q,
+            effectiveness_scale=effectiveness_scale,
+            noise_scale=noise_scale,
+            calibration_factors=calibration_factors,
+        )
+
+        run_differences = (
+            wide.groupby("run_id")[
+                [
+                    "resulting_risk__diff_AO_minus_baseline",
+                    "simulated_latency_ms__diff_AO_minus_baseline",
+                ]
+            ]
+            .mean()
+        )
+
+        risk_difference = float(
+            run_differences[
+                "resulting_risk__diff_AO_minus_baseline"
+            ].mean()
+        )
+
+        latency_difference = float(
+            run_differences[
+                "simulated_latency_ms__diff_AO_minus_baseline"
+            ].mean()
+        )
+
+        results.append(
+            {
+                "Sensitivity condition": label,
+                "Transition mix": transition_mix,
+                "Action-effect scale": effectiveness_scale,
+                "Network-noise scale": noise_scale,
+                "Mean risk difference (AO - baseline)": risk_difference,
+                "Mean latency difference ms (AO - baseline)": latency_difference,
+                "Risk direction favors AO?": risk_difference < 0,
+                "Latency direction favors AO?": latency_difference < 0,
+            }
+        )
+
+    return pd.DataFrame(results)
 
 
-def benchmark_real_crypto_switching(seed: int, n_events: int = 30) -> Tuple[pd.DataFrame, pd.DataFrame, str]:
-    """Run real RSA/ECDSA signing+verification and record actual suite-selection transitions.
+# ============================================================
+# SEPARATE RSA/ECDSA BENCHMARK
+# ============================================================
 
-    The suite selector is a transparent test policy, not present in the original dashboard.
-    This benchmark measures actual operations for RSA/ECC/Hybrid where cryptography is installed.
-    PQC is deliberately excluded unless a validated PQC backend is integrated.
+def benchmark_crypto(
+    seed: int,
+    n_events: int = 30,
+) -> Tuple[pd.DataFrame, pd.DataFrame, str]:
     """
-    if not CRYPTO_BACKEND_AVAILABLE:
-        return pd.DataFrame(), pd.DataFrame(), "The Python cryptography package is unavailable; no cryptographic operations were run."
+    Execute real RSA/ECDSA signing and verification.
+
+    This separate test harness does not validate original-dashboard
+    switching behavior and does not test post-quantum cryptography.
+    """
+
+    if not CRYPTO_AVAILABLE:
+
+        return (
+            pd.DataFrame(),
+            pd.DataFrame(),
+            "The cryptography package is unavailable.",
+        )
+
     rng = np.random.default_rng(seed)
-    # Deterministic, reproducible event stream. Mode selection is a test rule, not claimed to be
-    # the original AO-LACCP behavior. It allows measurement of actual suite changes/operations.
+
     events = []
+
     for i in range(n_events):
-        pressure = float(rng.random())
-        threat = str(rng.choice(["benign", "brute_force", "mitm", "zero_day"]))
-        if threat in ("mitm", "zero_day") or pressure >= .70:
+
+        pressure = float(
+            rng.random()
+        )
+
+        threat = str(
+            rng.choice(
+                ["benign", "brute_force", "mitm", "zero_day"]
+            )
+        )
+
+        if threat in ("mitm", "zero_day") or pressure >= 0.70:
             suite = "Hybrid (RSA+ECDSA)"
-        elif pressure >= .35:
+
+        elif pressure >= 0.35:
             suite = "ECDSA"
+
         else:
             suite = "RSA"
-        events.append({"event_id": i + 1, "threat_type": threat, "crypto_pressure": pressure, "selected_suite": suite})
-    # Generate real keys once; per-event signing and verification use the selected suite.
-    rsa_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    ec_key = ec.generate_private_key(ec.SECP256R1())
-    payload = b"AO-LACCP crypto-switch benchmark payload"
+
+        events.append(
+            {
+                "event_id": i + 1,
+                "threat_type": threat,
+                "crypto_pressure": pressure,
+                "selected_suite": suite,
+            }
+        )
+
+    rsa_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=2048,
+    )
+
+    ec_key = ec.generate_private_key(
+        ec.SECP256R1()
+    )
+
+    payload = b"AO-LACCP crypto benchmark payload"
+
     rows = []
-    previous = None
-    for ev in events:
-        suite = ev["selected_suite"]
-        switched = previous is not None and suite != previous
-        t0 = time.perf_counter()
-        ok = True
+    previous_suite = None
+
+    for event in events:
+
+        suite = event["selected_suite"]
+
+        switched = (
+            previous_suite is not None
+            and suite != previous_suite
+        )
+
+        start = time.perf_counter()
+
+        success = True
+
         try:
+
             if suite in ("RSA", "Hybrid (RSA+ECDSA)"):
-                sig_rsa = rsa_key.sign(payload, padding.PSS(mgf=padding.MGF1(hashes.SHA256()),
-                                    salt_length=padding.PSS.MAX_LENGTH), hashes.SHA256())
-                rsa_key.public_key().verify(sig_rsa, payload, padding.PSS(mgf=padding.MGF1(hashes.SHA256()),
-                                    salt_length=padding.PSS.MAX_LENGTH), hashes.SHA256())
+
+                signature = rsa_key.sign(
+                    payload,
+                    padding.PSS(
+                        mgf=padding.MGF1(hashes.SHA256()),
+                        salt_length=padding.PSS.MAX_LENGTH,
+                    ),
+                    hashes.SHA256(),
+                )
+
+                rsa_key.public_key().verify(
+                    signature,
+                    payload,
+                    padding.PSS(
+                        mgf=padding.MGF1(hashes.SHA256()),
+                        salt_length=padding.PSS.MAX_LENGTH,
+                    ),
+                    hashes.SHA256(),
+                )
+
             if suite in ("ECDSA", "Hybrid (RSA+ECDSA)"):
-                sig_ec = ec_key.sign(payload, ec.ECDSA(hashes.SHA256()))
-                ec_key.public_key().verify(sig_ec, payload, ec.ECDSA(hashes.SHA256()))
+
+                signature = ec_key.sign(
+                    payload,
+                    ec.ECDSA(hashes.SHA256()),
+                )
+
+                ec_key.public_key().verify(
+                    signature,
+                    payload,
+                    ec.ECDSA(hashes.SHA256()),
+                )
+
         except Exception:
-            ok = False
-        elapsed_ms = (time.perf_counter() - t0) * 1000.0
-        rows.append({**ev, "suite_changed_from_previous_event": bool(switched),
-                     "operation_success": bool(ok), "sign_verify_elapsed_ms": elapsed_ms,
-                     "operations_performed": 2 if suite != "Hybrid (RSA+ECDSA)" else 4})
-        previous = suite
+            success = False
+
+        elapsed_ms = (
+            time.perf_counter() - start
+        ) * 1000.0
+
+        rows.append(
+            {
+                **event,
+                "suite_changed_from_previous_event": switched,
+                "operation_success": success,
+                "sign_verify_elapsed_ms": elapsed_ms,
+                "operations_performed": (
+                    4
+                    if suite == "Hybrid (RSA+ECDSA)"
+                    else 2
+                ),
+            }
+        )
+
+        previous_suite = suite
+
     trace = pd.DataFrame(rows)
-    total_switches = int(trace["suite_changed_from_previous_event"].sum())
-    success_rate = float(trace["operation_success"].mean()) if len(trace) else float("nan")
-    summary = pd.DataFrame([{"Events": len(trace), "Suite transitions observed": total_switches,
-                             "Transition rate (excluding first event)": total_switches / max(1, len(trace)-1),
-                             "Successful sign/verify events": int(trace["operation_success"].sum()),
-                             "Operation success rate": success_rate,
-                             "Mean sign/verify elapsed ms": float(trace["sign_verify_elapsed_ms"].mean()),
-                             "PQC tested": False}])
-    note = ("This executes real RSA-2048 and ECDSA P-256 signing/verification and counts suite-selection changes. "
-            "It is a separate benchmark harness, not evidence that the original AO-LACCP dashboard performs these switches. "
-            "PQC is not tested because no PQC backend is integrated; do not claim PQC agility from these results.")
+
+    switch_count = int(
+        trace["suite_changed_from_previous_event"].sum()
+    )
+
+    summary = pd.DataFrame(
+        [
+            {
+                "Events": len(trace),
+                "Suite transitions observed": switch_count,
+                "Transition rate": (
+                    switch_count / max(1, len(trace) - 1)
+                ),
+                "Successful events": int(
+                    trace["operation_success"].sum()
+                ),
+                "Operation success rate": float(
+                    trace["operation_success"].mean()
+                ),
+                "Mean operation time ms": float(
+                    trace["sign_verify_elapsed_ms"].mean()
+                ),
+                "PQC tested": False,
+            }
+        ]
+    )
+
+    note = (
+        "This is a separate benchmark using real RSA-2048 and ECDSA P-256 "
+        "operations. The suite-selection rule is illustrative. It does not "
+        "prove dynamic switching in the original dashboard, and PQC is not tested."
+    )
+
     return trace, summary, note
 
+
+# ============================================================
+# CHARTS
+# ============================================================
+
+def make_outcome_plot(
+    detail: pd.DataFrame,
+) -> plt.Figure:
+
+    metric_specs = [
+        ("resulting_risk", "Cyber risk"),
+        ("simulated_latency_ms", "Simulated latency (ms)"),
+        ("service_impact_proxy", "Service impact proxy"),
+        ("action_cost_proxy", "Action cost proxy"),
+    ]
+
+    fig, axes = plt.subplots(
+        2,
+        2,
+        figsize=(12, 8),
+    )
+
+    for ax, (metric, title) in zip(
+        axes.flat,
+        metric_specs,
+    ):
+
+        values = [
+            detail.loc[
+                detail["policy"] == POLICY_BASELINE,
+                metric,
+            ].to_numpy(dtype=float),
+
+            detail.loc[
+                detail["policy"] == POLICY_AO,
+                metric,
+            ].to_numpy(dtype=float),
+        ]
+
+        ax.boxplot(
+            values,
+            labels=["Baseline", "AO-LACCP Q-learning"],
+            showmeans=True,
+        )
+
+        ax.set_title(title)
+        ax.grid(axis="y", alpha=0.25)
+
+    fig.suptitle(
+        "Held-out synthetic scenario outcome distributions"
+    )
+
+    fig.tight_layout()
+
+    return fig
+
+
+# ============================================================
+# MAIN STREAMLIT APPLICATION
+# ============================================================
+
 def main() -> None:
-    st.title("AO-LACCP: Scientific Paired Evaluation Prototype")
-    st.warning("Synthetic model only. This app can test reproducibility and conditional behavior; it cannot by itself validate real-world banking efficacy or justify uncalibrated simulation assumptions.")
-    with st.expander("Protocol, policy and limitations", expanded=True):
-        st.markdown("""
-**Design:** Q-learning is trained on synthetic training scenarios and then frozen. Evaluation uses independent held-out scenarios. Each held-out scenario is passed unchanged to the baseline and AO-LACCP policy.
 
-**Baseline:** fixed thresholds on initial risk, threat signal and cryptographic pressure. This is one explicit comparator, not a claim to represent all production SOCs.
+    st.title(
+        "🛡️ AO-LACCP: Scientific Paired Evaluation"
+    )
 
-**Policy alignment audit:** the Q-learning state/action/reward/transition structure below now reproduces the current `ao_laccp_full_framework_updated.py` illustrative MDP: Low/Medium/High; Monitor/Mitigate/Escalate; configured state-only transition rows; matching-action rewards +10/+20/+30 and -5 otherwise. The original artifact does NOT connect this Q-table to its generated risk/latency/agility outcomes. The mapping from actions to outcome effects in this evaluation is therefore an explicitly added bridge assumption, not verified original behavior.
+    st.caption(
+        "Synthetic research prototype | Reproducible paired comparisons "
+        "| Not a production validation"
+    )
 
-**Shared outputs:** both policies use the same synthetic outcome equations. The action-effect bridge and scenario generator are not empirically calibrated. A separate cryptographic benchmark below performs real RSA/ECDSA signing and verification and records suite transitions, but it does not validate the original dashboard or PQC switching.
+    st.warning(
+        "Results are conditional on synthetic scenarios and assumed outcome "
+        "equations. They do not prove real-world banking, FinTech, or SOC superiority."
+    )
 
-**Inference:** scenarios are nested within independent simulation runs. The primary statistical summaries therefore use run-level mean differences, with confidence intervals, effect sizes and Holm correction across the displayed metrics.
+    with st.expander(
+        "Study protocol and limitations",
+        expanded=True,
+    ):
 
-**Before dissertation use:** pre-specify primary outcomes and reward weights; justify/calibrate scenario and action-effect parameters; perform sensitivity analyses; and verify the evaluated policy matches the artifact you claim to evaluate.
-""")
+        st.markdown(
+            """
+**Evaluation design:** Q-learning is trained first and then frozen.
+Both policies receive the same held-out synthetic scenario inputs.
+
+**Baseline:** A declared fixed-threshold comparator, not a representation
+of every production SOC.
+
+**MDP:** Three states (Low, Medium, High), three actions
+(Monitor, Mitigate, Escalate), configured state-only transition rows,
+matching-action rewards of +10, +20, +30, and -5 otherwise.
+
+**Outcome bridge:** The mapping from selected actions to risk, latency,
+service-impact, and cost is an assumed evaluation model. It is not
+established as the original dashboard's metric-generation logic.
+
+**Statistics:** Primary confidence intervals and hypothesis tests use
+independent run-level means and paired differences. Scenarios within
+a run are not treated as independent replicates.
+
+**Calibration:** Sensitivity analysis tests how findings respond to
+assumptions; it does not itself calibrate the model.
+
+**Cryptography:** The optional RSA/ECDSA benchmark is separate and does
+not test PQC or prove switching in the original AO-LACCP dashboard.
+"""
+        )
+
+    # --------------------------------------------------------
+    # Evaluation parameters
+    # --------------------------------------------------------
+
+    st.subheader("Evaluation settings")
+
     c1, c2, c3 = st.columns(3)
-    with c1: seed = int(st.number_input("Random seed", min_value=0, max_value=2_000_000_000, value=20261017, step=1))
-    with c2: n_runs = int(st.number_input("Independent test runs", min_value=10, max_value=200, value=40, step=10))
-    with c3: n_per_run = int(st.number_input("Scenarios per run", min_value=25, max_value=2000, value=200, step=25))
-    st.subheader("Training protocol")
-    a, b, c, d = st.columns(4)
-    with a: episodes = int(st.number_input("Training episodes", min_value=100, max_value=10000, value=1500, step=100))
-    with b: steps = int(st.number_input("Steps per episode", min_value=5, max_value=100, value=20, step=5))
-    with c: alpha = float(st.slider("Learning rate α", 0.01, 1.0, 0.10, 0.01))
-    with d: gamma = float(st.slider("Discount γ", 0.0, 0.99, 0.80, 0.01))
-    epsilon = float(st.slider("Exploration ε during training", 0.01, 1.0, 0.15, 0.01))
-    st.markdown("**Predeclared reward weights** (must be justified and sensitivity-tested)")
-    w1, w2, w3, w4 = st.columns(4)
-    with w1: wrisk = float(st.number_input("Risk weight (reported; artifact reward uses fixed +10/+20/+30/-5)", min_value=0.0, max_value=1.0, value=0.55, step=0.05))
-    with w2: wlat = float(st.number_input("Latency weight", min_value=0.0, max_value=1.0, value=0.15, step=0.05))
-    with w3: wserv = float(st.number_input("Service impact weight", min_value=0.0, max_value=1.0, value=0.20, step=0.05))
-    with w4: wcost = float(st.number_input("Action cost weight", min_value=0.0, max_value=1.0, value=0.10, step=0.05))
-    weights = {"risk": wrisk, "latency": wlat, "service": wserv, "cost": wcost}
-    if sum(weights.values()) <= 0:
-        st.error("At least one reward weight must be positive.")
-        return
-    st.caption(f"Reward weights sum to {sum(weights.values()):.2f}; note that the artifact-aligned Q learner uses the original fixed +10/+20/+30/-5 reward table; these weights are retained for sensitivity-report context only.")
-    st.subheader("Optional empirical action-effect calibration")
-    st.write("Upload a CSV with columns `action,observed_mitigation_fraction`, where action is Monitor/Mitigate/Escalate (or monitor/rate_limit/isolate) and the fraction is an observed, documented mitigation proportion from comparable experiments. Do not upload invented values and label them empirical.")
-    calibration_upload = st.file_uploader("Empirical action-effect calibration CSV (optional)", type=["csv"], key="action_calibration_csv")
-    calibration_factors = {}
-    if calibration_upload is not None:
-        try:
-            calibration_factors, calibration_table, calibration_note = parse_action_calibration(calibration_upload)
-            st.dataframe(calibration_table.round(5), use_container_width=True, hide_index=True)
-            st.caption(calibration_note)
-        except Exception as exc:
-            st.error(f"Calibration file was not applied: {exc}")
-            calibration_factors = {}
-    if st.button("Train policy and run held-out paired evaluation", type="primary", use_container_width=True):
-        with st.spinner("Training Q-learning on training scenarios, freezing the policy, and evaluating on held-out scenarios..."):
-            q = train_q_policy(seed + 7_000_001, episodes, steps, weights, alpha, gamma, epsilon)
-            detail, wide = evaluate(seed + 19_000_003, n_runs, n_per_run, q, calibration_factors=calibration_factors)
-            summary, run_means = summarize_runs(wide)
-            config = {"seed": seed, "independent_test_runs": n_runs, "scenarios_per_run": n_per_run,
-                      "training_episodes": episodes, "steps_per_episode": steps, "alpha": alpha, "gamma": gamma,
-                      "epsilon": epsilon, "reward_weights": weights, "baseline": "fixed-threshold policy",
-                      "AO-LACCP policy": "state/action/reward/transition structure aligned to current original artifact MDP",
-                      "policy_outcome_bridge": "new, assumed mapping from original actions to common outcome equations",
-                      "mdp_transition_model": "original artifact configured state-only transition rows; not calibrated",
-                      "sensitivity_analysis": "separate retraining and reevaluation across parameter variants",
-                      "empirical_action_calibration_factors": calibration_factors,
-                      "calibration_note": "No action-effect calibration applied unless a valid empirical CSV was uploaded"}
-            st.session_state["eval_detail"] = detail
-            st.session_state["eval_wide"] = wide
-            st.session_state["eval_summary"] = summary
-            st.session_state["eval_runs"] = run_means
-            st.session_state["eval_q"] = q
-            st.session_state["eval_config"] = config
-    if "eval_summary" not in st.session_state:
-        st.info("Set the protocol values, then run the held-out paired evaluation.")
-        return
-    detail = st.session_state["eval_detail"]
-    wide = st.session_state["eval_wide"]
-    summary = st.session_state["eval_summary"]
-    run_means = st.session_state["eval_runs"]
-    q = st.session_state["eval_q"]
-    config = st.session_state["eval_config"]
-    st.subheader("Learned Q-table — frozen before test evaluation")
-    st.dataframe(q.round(4), use_container_width=True)
-    st.subheader("Primary statistical summary")
-    st.dataframe(summary.round(5), use_container_width=True, hide_index=True)
-    st.caption("Negative AO-minus-baseline differences favor AO-LACCP only for metrics where lower is better. Action codes are categorical and are excluded from hypothesis tests.")
-    st.subheader("Mean outcomes with 95% confidence intervals")
-    means = []
-    for metric, label in [("resulting_risk", "Risk"), ("simulated_latency_ms", "Simulated latency"), ("service_impact_proxy", "Service impact"), ("action_cost_proxy", "Action cost")]:
-        for pol, name in [("Baseline", "Baseline"), ("AO-LACCP artifact-aligned Q-learning", "AO-LACCP artifact-aligned Q-learning")]:
-            # Use independent run-level means for intervals; scenarios within a run are not treated as independent replicates.
-            per_run = detail.loc[detail.policy == pol].groupby("run_id")[metric].mean().to_numpy(float)
-            n_run = len(per_run)
-            mean = float(per_run.mean())
-            se = float(stats.sem(per_run)) if n_run > 1 else np.nan
-            crit = float(stats.t.ppf(.975, n_run - 1)) if n_run > 1 else np.nan
-            means.append({"Metric": label, "Policy": name, "Mean": mean,
-                          "CI_low": mean - crit * se if n_run > 1 else np.nan,
-                          "CI_high": mean + crit * se if n_run > 1 else np.nan})
-    mean_df = pd.DataFrame(means)
-    fig, ax = plt.subplots(figsize=(10, 4.5))
-    metrics_labels = list(mean_df.Metric.drop_duplicates())
-    x = np.arange(len(metrics_labels)); width = .36
-    for j, pol in enumerate(["Baseline", "AO-LACCP artifact-aligned Q-learning"]):
-        sub = mean_df[mean_df.Policy == pol].set_index("Metric").loc[metrics_labels]
-        yerr = np.vstack([sub.Mean.to_numpy() - sub.CI_low.to_numpy(), sub.CI_high.to_numpy() - sub.Mean.to_numpy()])
-        ax.bar(x + (j - .5) * width, sub.Mean, width, yerr=yerr, capsize=4, label=pol)
-    ax.set_xticks(x); ax.set_xticklabels(metrics_labels, rotation=10); ax.set_ylabel("Mean (95% CI across independent runs)")
-    ax.set_title("Descriptive policy outcomes with run-level 95% confidence intervals"); ax.legend(); ax.grid(axis="y", alpha=.25)
-    fig.tight_layout(); st.pyplot(fig); plt.close(fig)
-    st.subheader("Run-level paired differences with 95% confidence intervals")
-    # Match each plotted outcome to its actual summary label. The summary uses
-    # "Service-impact" and "Action-cost" (hyphens), so shorter labels such as
-    # "Service impact" would return an empty DataFrame and make .iloc[0] fail.
-    diff_metrics = [
-        ("resulting_risk", "Risk (lower is better)"),
-        ("simulated_latency_ms", "Simulated latency (ms; lower is better)"),
-        ("service_impact_proxy", "Service-impact proxy (lower is better)"),
-        ("action_cost_proxy", "Action-cost proxy (lower is better)"),
-    ]
-    fig, ax = plt.subplots(figsize=(10, 5))
-    y_positions = np.arange(len(diff_metrics))
-    for y, (metric, summary_label) in zip(y_positions, diff_metrics):
-        matches = summary.loc[summary["Metric"].eq(summary_label)]
-        if matches.empty:
-            st.warning(
-                f"Cannot plot paired differences for '{metric}': "
-                f"summary row '{summary_label}' was not found. "
-                f"Available metrics: {', '.join(summary['Metric'].astype(str).tolist())}"
+
+    with c1:
+
+        seed = int(
+            st.number_input(
+                "Random seed",
+                min_value=0,
+                max_value=2_000_000_000,
+                value=20261017,
+                step=1,
             )
-            continue
-        row = matches.iloc[0]
-        m = float(row["Mean run-level paired difference (AO - baseline)"])
-        lo, hi = float(row["95% t CI low"]), float(row["95% t CI high"])
-        if np.isfinite(m) and np.isfinite(lo) and np.isfinite(hi):
-            ax.errorbar(m, y, xerr=[[max(0.0, m-lo)], [max(0.0, hi-m)]], fmt="o", capsize=4)
-        else:
-            ax.plot(m, y, "o")
-            ax.annotate("CI unavailable", (m, y), xytext=(5, 5), textcoords="offset points", fontsize=8)
-    ax.axvline(0, linestyle="--", linewidth=1); ax.set_yticks(y_positions); ax.set_yticklabels(["Risk", "Simulated latency", "Service impact", "Action cost"])
-    ax.set_xlabel("AO-LACCP minus baseline (run-level mean difference)"); ax.set_title("Paired effects and 95% t confidence intervals")
-    ax.grid(axis="x", alpha=.25); fig.tight_layout(); st.pyplot(fig); plt.close(fig)
-    st.subheader("Paired outcome distributions")
-    selected = st.selectbox("Select metric", ["resulting_risk", "simulated_latency_ms", "service_impact_proxy", "action_cost_proxy"])
-    fig, ax = plt.subplots(figsize=(8, 4.5))
-    ax.boxplot([detail.loc[detail.policy == "Baseline", selected], detail.loc[detail.policy == "AO-LACCP artifact-aligned Q-learning", selected]], labels=["Baseline", "AO-LACCP artifact-aligned Q-learning"], showmeans=True)
-    ax.set_ylabel(selected); ax.set_title("Held-out scenario outcome distributions"); ax.grid(axis="y", alpha=.25)
-    fig.tight_layout(); st.pyplot(fig); plt.close(fig)
-    st.subheader("Hypothesis-testing comparison graphs")
-    st.caption("Only quantitative modeled outcomes are plotted here. Cryptographic suite switching is measured separately by executing real RSA/ECDSA operations; it is not inferred from action codes.")
-    chart_specs = [
-        ("resulting_risk", "Cyber risk comparison", "Risk score (lower is better)"),
-        ("simulated_latency_ms", "Response latency comparison", "Simulated latency (ms; lower is better)"),
+        )
+
+    with c2:
+
+        n_runs = int(
+            st.number_input(
+                "Independent test runs",
+                min_value=10,
+                max_value=200,
+                value=40,
+                step=10,
+            )
+        )
+
+    with c3:
+
+        n_per_run = int(
+            st.number_input(
+                "Scenarios per run",
+                min_value=25,
+                max_value=2000,
+                value=200,
+                step=25,
+            )
+        )
+
+    st.subheader("Q-learning training")
+
+    a, b, c, d = st.columns(4)
+
+    with a:
+
+        episodes = int(
+            st.number_input(
+                "Training episodes",
+                min_value=100,
+                max_value=10000,
+                value=1500,
+                step=100,
+            )
+        )
+
+    with b:
+
+        steps = int(
+            st.number_input(
+                "Steps per episode",
+                min_value=5,
+                max_value=100,
+                value=20,
+                step=5,
+            )
+        )
+
+    with c:
+
+        alpha = float(
+            st.slider(
+                "Learning rate α",
+                min_value=0.01,
+                max_value=1.0,
+                value=0.10,
+                step=0.01,
+            )
+        )
+
+    with d:
+
+        gamma = float(
+            st.slider(
+                "Discount factor γ",
+                min_value=0.0,
+                max_value=0.99,
+                value=0.80,
+                step=0.01,
+            )
+        )
+
+    epsilon = float(
+        st.slider(
+            "Exploration ε during training",
+            min_value=0.01,
+            max_value=1.0,
+            value=0.15,
+            step=0.01,
+        )
+    )
+
+    # --------------------------------------------------------
+    # Optional calibration upload
+    # --------------------------------------------------------
+
+    st.subheader(
+        "Optional empirical action-effect calibration"
+    )
+
+    st.write(
+        "Upload a CSV containing `action` and "
+        "`observed_mitigation_fraction`. Use only documented observations "
+        "measured under comparable conditions."
+    )
+
+    uploaded_file = st.file_uploader(
+        "Calibration CSV (optional)",
+        type=["csv"],
+    )
+
+    calibration_factors = {}
+
+    if uploaded_file is not None:
+
+        try:
+
+            (
+                calibration_factors,
+                calibration_table,
+                calibration_note,
+            ) = parse_calibration_csv(
+                uploaded_file
+            )
+
+            st.dataframe(
+                calibration_table.round(5),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            st.caption(calibration_note)
+
+        except Exception as exc:
+
+            st.error(
+                f"Calibration was not applied: {exc}"
+            )
+
+            calibration_factors = {}
+
+    # --------------------------------------------------------
+    # Train and evaluate
+    # --------------------------------------------------------
+
+    if st.button(
+        "Train policy and run held-out evaluation",
+        type="primary",
+        use_container_width=True,
+    ):
+
+        with st.spinner(
+            "Training Q-learning and evaluating paired scenarios..."
+        ):
+
+            q = train_q_policy(
+                seed + 7_000_001,
+                episodes,
+                steps,
+                alpha,
+                gamma,
+                epsilon,
+            )
+
+            detail, wide = evaluate(
+                seed + 19_000_003,
+                n_runs,
+                n_per_run,
+                q,
+                calibration_factors=calibration_factors,
+            )
+
+            summary = summarize_runs(wide)
+
+            config = {
+                "seed": seed,
+                "independent_test_runs": n_runs,
+                "scenarios_per_run": n_per_run,
+                "training_episodes": episodes,
+                "steps_per_episode": steps,
+                "alpha": alpha,
+                "gamma": gamma,
+                "epsilon": epsilon,
+                "baseline": "fixed-threshold policy",
+                "AO_policy": "tabular Q-learning on declared synthetic MDP",
+                "outcome_model": "shared assumed synthetic outcome equations",
+                "calibration_factors": calibration_factors,
+                "PQC_tested": False,
+            }
+
+            st.session_state["detail"] = detail
+            st.session_state["wide"] = wide
+            st.session_state["summary"] = summary
+            st.session_state["q"] = q
+            st.session_state["config"] = config
+
+            st.session_state.pop(
+                "sensitivity",
+                None,
+            )
+
+            st.session_state.pop(
+                "crypto_summary",
+                None,
+            )
+
+            st.session_state.pop(
+                "crypto_trace",
+                None,
+            )
+
+    # Do not display analysis until evaluation has run.
+    if "summary" not in st.session_state:
+
+        st.info(
+            "Choose the settings above, then run the evaluation."
+        )
+
+        return
+
+    detail = st.session_state["detail"]
+    wide = st.session_state["wide"]
+    summary = st.session_state["summary"]
+    q = st.session_state["q"]
+    config = st.session_state["config"]
+
+    # --------------------------------------------------------
+    # Q-table and statistical summary
+    # --------------------------------------------------------
+
+    st.subheader(
+        "Learned Q-table — frozen before evaluation"
+    )
+
+    st.dataframe(
+        q.round(4),
+        use_container_width=True,
+    )
+
+    optimal_policy = pd.DataFrame(
+        {
+            "State": q.index,
+            "Selected action": [
+                q.loc[state].idxmax()
+                for state in q.index
+            ],
+            "Best estimated Q-value": [
+                float(q.loc[state].max())
+                for state in q.index
+            ],
+        }
+    )
+
+    st.subheader(
+        "Policy derived from learned Q-table"
+    )
+
+    st.dataframe(
+        optimal_policy.round(4),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.caption(
+        "The selected action is optimal only relative to this declared "
+        "synthetic MDP and reward function."
+    )
+
+    st.subheader(
+        "Primary run-level paired statistical summary"
+    )
+
+    st.dataframe(
+        summary.round(5),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.caption(
+        "Negative AO-minus-baseline differences favor AO-LACCP only for "
+        "metrics where lower is better. Statistical significance does not "
+        "validate the model assumptions."
+    )
+
+    # --------------------------------------------------------
+    # Outcome distributions
+    # --------------------------------------------------------
+
+    st.subheader(
+        "Held-out outcome distributions"
+    )
+
+    fig = make_outcome_plot(detail)
+
+    st.pyplot(fig)
+
+    plt.close(fig)
+
+    # --------------------------------------------------------
+    # Run-level mean confidence intervals
+    # --------------------------------------------------------
+
+    st.subheader(
+        "Mean outcomes and 95% confidence intervals"
+    )
+
+    metric_specs = [
+        ("resulting_risk", "Risk"),
+        ("simulated_latency_ms", "Simulated latency (ms)"),
+        ("service_impact_proxy", "Service impact"),
+        ("action_cost_proxy", "Action cost"),
     ]
-    for metric, title, ylabel in chart_specs:
-        plot_df = detail.groupby(["run_id", "policy"])[metric].mean().reset_index()
-        fig, ax = plt.subplots(figsize=(8, 4))
-        data = [plot_df.loc[plot_df.policy == pol, metric].to_numpy(float)
-                for pol in ["Baseline", "AO-LACCP artifact-aligned Q-learning"]]
-        ax.boxplot(data, labels=["Baseline", "AO-LACCP artifact-aligned Q-learning"], showmeans=True)
-        ax.set_title(title + " (independent run means)")
-        ax.set_ylabel(ylabel)
-        ax.grid(axis="y", alpha=.25)
-        fig.tight_layout(); st.pyplot(fig); plt.close(fig)
 
-    st.subheader("Policy action selection counts (descriptive only)")
-    action_counts = detail.groupby(["policy", "selected_action"]).size().rename("Scenario count").reset_index()
-    action_counts["Share within policy"] = action_counts["Scenario count"] / action_counts.groupby("policy")["Scenario count"].transform("sum")
-    st.dataframe(action_counts, use_container_width=True, hide_index=True)
+    mean_rows = []
 
-    st.subheader("Repeated-measures ANOVA results")
-    st.write("Because both policies receive the same scenarios, an independent-groups one-way ANOVA would ignore pairing. For two policies, the appropriate repeated-measures ANOVA test is equivalent to the paired t-test on independent run-level means (F = t²).")
-    anova_table = paired_repeated_measures_anova(detail)
-    st.dataframe(anova_table.round(5), use_container_width=True, hide_index=True)
+    for metric, label in metric_specs:
 
-    st.subheader("Exploratory regression analysis (R²)")
-    st.write("This OLS model describes how scenario inputs relate to the paired AO-minus-baseline cyber-risk difference. R² is descriptive, not proof of causality or model validity; coefficients and fit depend on the assumed synthetic outcome model.")
-    reg_table, reg_r2 = exploratory_risk_regression(detail, wide)
-    rcol1, rcol2 = st.columns([1, 2])
-    with rcol1:
-        st.metric("Exploratory R²", f"{reg_r2:.4f}" if np.isfinite(reg_r2) else "Unavailable")
-    with rcol2:
-        st.dataframe(reg_table.round(6), use_container_width=True, hide_index=True)
+        for policy in (
+            POLICY_BASELINE,
+            POLICY_AO,
+        ):
 
-    st.subheader("Markov decision process (MDP)")
-    st.markdown("The tabular Q-learning policy now uses an explicit action-dependent synthetic transition rule. The transition probabilities are assumed for demonstration and must be justified or calibrated before dissertation claims. The crypto-pressure band is modelled as an external condition, not as cryptographic posture.")
-    transition_table = mdp_transition_table(transition_mix=1.0)
-    st.dataframe(transition_table.round(3), use_container_width=True, hide_index=True)
+            per_run = (
+                detail.loc[
+                    detail["policy"] == policy
+                ]
+                .groupby("run_id")[metric]
+                .mean()
+                .to_numpy(dtype=float)
+            )
 
-    st.subheader("Optimal policy derived from the learned Q-table")
-    optimal = q.copy()
-    optimal["Optimal action"] = [str(q.loc[idx].idxmax()) for idx in q.index]
-    optimal["Best estimated Q-value"] = [float(q.loc[idx].max()) for idx in q.index]
-    st.dataframe(optimal.round(4), use_container_width=True)
-    st.caption("The optimal action is optimal only relative to this declared synthetic MDP, reward function, and training setup; it is not established as globally optimal for real financial systems.")
+            n = len(per_run)
 
-    st.subheader("Policy-to-artifact alignment audit")
-    st.markdown("The current original framework code uses three states (Low/Medium/High), three actions (Monitor/Mitigate/Escalate), transition rows Low=[0.70, 0.25, 0.05], Medium=[0.30, 0.50, 0.20], High=[0.10, 0.40, 0.50], and rewards +10/+20/+30 for the matching state/action, otherwise -5. The evaluation reproduces that MDP structure. These transitions are sourced from the code, not empirically calibrated. The original artifact does not connect these actions to separately generated risk/latency/agility values. This app adds an explicit action-to-outcome bridge; therefore the outcome comparison is not a direct validation of the original dashboard's metric generation. Upload comparable observed mitigation data to calibrate action-effect multipliers; absent such data, values remain assumptions.")
-    st.dataframe(mdp_transition_table(1.0), use_container_width=True, hide_index=True)
+            mean_value = float(
+                np.mean(per_run)
+            )
 
-    st.subheader("Genuine sensitivity analysis: retrain and rerun")
-    st.caption("Each row retrains the Q policy and reruns the paired held-out evaluation under a different transition or outcome-model assumption. These are stress tests, not empirical calibration.")
-    if st.button("Run sensitivity analysis (7 complete reruns)", use_container_width=True):
-        with st.spinner("Retraining and reevaluating all sensitivity conditions..."):
-            sens = run_sensitivity_analysis(seed + 303_001, episodes, steps, weights, alpha, gamma, epsilon,
-                                            min(n_runs, 20), min(n_per_run, 150), calibration_factors)
-            st.session_state["eval_sensitivity"] = sens
-    if "eval_sensitivity" in st.session_state:
-        sens = st.session_state["eval_sensitivity"]
-        st.dataframe(sens.round(5), use_container_width=True, hide_index=True)
-        fig, ax = plt.subplots(figsize=(10, 4.5))
-        ax.bar(sens["Sensitivity condition"], sens["Mean paired risk difference (AO - baseline)"])
-        ax.axhline(0, linestyle="--", linewidth=1)
-        ax.set_ylabel("Mean paired risk difference (AO - baseline)")
-        ax.set_title("Sensitivity of risk comparison to assumed parameters")
-        ax.tick_params(axis="x", labelrotation=25); ax.grid(axis="y", alpha=.25); fig.tight_layout()
-        st.pyplot(fig); plt.close(fig)
-        st.download_button("Download sensitivity analysis CSV", sens.to_csv(index=False).encode(),
-                            "ao_laccp_sensitivity_analysis.csv", "text/csv")
+            if n > 1:
 
-    st.subheader("Real cryptographic operation and switching benchmark (RSA/ECDSA/Hybrid)")
-    st.warning("This separate test performs actual cryptographic signing/verification and measures suite transitions in a generated event sequence. The original AO-LACCP dashboard currently exposes a static crypto-model selector and does not implement or log dynamic switching. This benchmark therefore measures a test harness, not original-artifact behavior; PQC is not included.")
-    if st.button("Run real cryptographic switching benchmark", use_container_width=True):
-        with st.spinner("Executing RSA/ECDSA/Hybrid signing and verification operations..."):
-            crypto_trace, crypto_summary, crypto_note = benchmark_real_crypto_switching(seed + 404_001, 30)
-            st.session_state["crypto_trace"] = crypto_trace
+                standard_error = float(
+                    stats.sem(per_run)
+                )
+
+                critical = float(
+                    stats.t.ppf(
+                        0.975,
+                        n - 1,
+                    )
+                )
+
+                ci_low = (
+                    mean_value
+                    - critical * standard_error
+                )
+
+                ci_high = (
+                    mean_value
+                    + critical * standard_error
+                )
+
+            else:
+
+                ci_low = np.nan
+                ci_high = np.nan
+
+            mean_rows.append(
+                {
+                    "Metric": label,
+                    "Policy": policy,
+                    "Mean": mean_value,
+                    "95% CI low": ci_low,
+                    "95% CI high": ci_high,
+                }
+            )
+
+    mean_df = pd.DataFrame(mean_rows)
+
+    st.dataframe(
+        mean_df.round(5),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    # --------------------------------------------------------
+    # Action counts
+    # --------------------------------------------------------
+
+    st.subheader(
+        "Action selection counts"
+    )
+
+    action_counts = (
+        detail.groupby(
+            ["policy", "selected_action"]
+        )
+        .size()
+        .rename("Scenario count")
+        .reset_index()
+    )
+
+    action_counts["Share within policy"] = (
+        action_counts["Scenario count"]
+        / action_counts.groupby(
+            "policy"
+        )["Scenario count"].transform("sum")
+    )
+
+    st.dataframe(
+        action_counts,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    # --------------------------------------------------------
+    # MDP transition table
+    # --------------------------------------------------------
+
+    st.subheader(
+        "Configured MDP transition probabilities"
+    )
+
+    transition_rows = []
+
+    for state, probabilities in ARTIFACT_TRANSITIONS.items():
+
+        for next_state, probability in zip(
+            ["Low", "Medium", "High"],
+            probabilities,
+        ):
+
+            transition_rows.append(
+                {
+                    "Current state": state,
+                    "Next state": next_state,
+                    "Transition probability": float(probability),
+                    "Model note": (
+                        "Illustrative; action-independent"
+                    ),
+                }
+            )
+
+    transition_df = pd.DataFrame(
+        transition_rows
+    )
+
+    st.dataframe(
+        transition_df.round(4),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.caption(
+        "The configured transition probabilities depend on the current "
+        "state, not on the selected action. They are assumptions unless "
+        "supported by empirical evidence."
+    )
+
+    # --------------------------------------------------------
+    # Repeated-measures results
+    # --------------------------------------------------------
+
+    st.subheader(
+        "Repeated-measures ANOVA comparison"
+    )
+
+    st.write(
+        "Because the policies receive the same scenarios, an independent-groups "
+        "ANOVA would ignore pairing. With two conditions, repeated-measures ANOVA "
+        "is equivalent to a paired t-test, with F = t², on the independent run means."
+    )
+
+    anova_df = repeated_measures_results(
+        detail
+    )
+
+    st.dataframe(
+        anova_df.round(5),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    # --------------------------------------------------------
+    # Exploratory regression
+    # --------------------------------------------------------
+
+    st.subheader(
+        "Exploratory regression analysis"
+    )
+
+    st.write(
+        "This descriptive OLS model examines how scenario inputs relate to "
+        "the paired AO-minus-baseline risk difference. R² is not proof of "
+        "causality, model validity, or real-world efficacy."
+    )
+
+    regression_table, r_squared = (
+        exploratory_risk_regression(
+            detail,
+            wide,
+        )
+    )
+
+    left, right = st.columns([1, 2])
+
+    with left:
+
+        st.metric(
+            "Exploratory R²",
+            (
+                f"{r_squared:.4f}"
+                if np.isfinite(r_squared)
+                else "Unavailable"
+            ),
+        )
+
+    with right:
+
+        st.dataframe(
+            regression_table.round(6),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    # --------------------------------------------------------
+    # Sensitivity analysis
+    # --------------------------------------------------------
+
+    st.subheader(
+        "Sensitivity analysis"
+    )
+
+    st.caption(
+        "Each condition retrains Q-learning and reruns the evaluation. "
+        "The same test scenario seeds are reused across variants. These "
+        "tests assess sensitivity to assumptions; they are not calibration."
+    )
+
+    if st.button(
+        "Run sensitivity analysis (7 evaluations)",
+        use_container_width=True,
+    ):
+
+        with st.spinner(
+            "Retraining and rerunning sensitivity conditions..."
+        ):
+
+            sensitivity = run_sensitivity_analysis(
+                seed + 303_001,
+                episodes,
+                steps,
+                alpha,
+                gamma,
+                epsilon,
+                min(n_runs, 20),
+                min(n_per_run, 150),
+                calibration_factors,
+            )
+
+            st.session_state["sensitivity"] = sensitivity
+
+    if "sensitivity" in st.session_state:
+
+        sensitivity = st.session_state[
+            "sensitivity"
+        ]
+
+        st.dataframe(
+            sensitivity.round(5),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        fig, ax = plt.subplots(
+            figsize=(10, 4.5)
+        )
+
+        ax.bar(
+            sensitivity["Sensitivity condition"],
+            sensitivity[
+                "Mean risk difference (AO - baseline)"
+            ],
+        )
+
+        ax.axhline(
+            0,
+            linestyle="--",
+            linewidth=1,
+        )
+
+        ax.set_ylabel(
+            "Mean risk difference (AO - baseline)"
+        )
+
+        ax.set_title(
+            "Sensitivity of risk comparison to model assumptions"
+        )
+
+        ax.tick_params(
+            axis="x",
+            labelrotation=25,
+        )
+
+        ax.grid(
+            axis="y",
+            alpha=0.25,
+        )
+
+        fig.tight_layout()
+
+        st.pyplot(fig)
+
+        plt.close(fig)
+
+        st.download_button(
+            "Download sensitivity CSV",
+            sensitivity.to_csv(
+                index=False
+            ).encode("utf-8"),
+            "ao_laccp_sensitivity_analysis.csv",
+            "text/csv",
+        )
+
+    # --------------------------------------------------------
+    # Separate cryptographic benchmark
+    # --------------------------------------------------------
+
+    st.subheader(
+        "Separate RSA/ECDSA cryptographic benchmark"
+    )
+
+    st.warning(
+        "This separate harness executes actual RSA/ECDSA signing and verification. "
+        "The suite-selection rule is illustrative and does not establish that the "
+        "original AO-LACCP dashboard implements dynamic switching. PQC is not tested."
+    )
+
+    if not CRYPTO_AVAILABLE:
+
+        st.info(
+            "Install the cryptography package to enable this optional benchmark."
+        )
+
+    if st.button(
+        "Run RSA/ECDSA benchmark",
+        use_container_width=True,
+    ):
+
+        with st.spinner(
+            "Executing cryptographic signing and verification..."
+        ):
+
+            trace, crypto_summary, crypto_note = (
+                benchmark_crypto(
+                    seed + 404_001,
+                    30,
+                )
+            )
+
+            st.session_state["crypto_trace"] = trace
             st.session_state["crypto_summary"] = crypto_summary
             st.session_state["crypto_note"] = crypto_note
-    if "crypto_summary" in st.session_state:
-        st.dataframe(st.session_state["crypto_summary"].round(5), use_container_width=True, hide_index=True)
-        st.caption(st.session_state["crypto_note"])
-        crypto_trace = st.session_state["crypto_trace"]
-        st.dataframe(crypto_trace.round(5), use_container_width=True, hide_index=True)
-        fig, ax = plt.subplots(figsize=(9, 3.5))
-        ax.step(crypto_trace["event_id"], crypto_trace["suite_changed_from_previous_event"].astype(int), where="mid")
-        ax.set_yticks([0, 1], labels=["No switch", "Switch"])
-        ax.set_xlabel("Event number"); ax.set_title("Observed cryptographic suite changes in the benchmark trace")
-        ax.grid(axis="x", alpha=.25); fig.tight_layout(); st.pyplot(fig); plt.close(fig)
-        st.download_button("Download cryptographic operation trace CSV",
-                            st.session_state["crypto_trace"].to_csv(index=False).encode(),
-                            "ao_laccp_crypto_switch_trace.csv", "text/csv")
 
-    st.subheader("Independent run-level results (not a sensitivity analysis)")
-    st.dataframe(run_means.round(5), use_container_width=True, hide_index=True)
-    st.warning("This run-to-run table measures variability, not parameter sensitivity. A true sensitivity analysis must rerun the complete evaluation under predeclared alternative transition probabilities, action-effectiveness values, scenario distributions, and reward weights.")
-    st.subheader("Reproducibility record")
-    config_json = json.dumps(config, indent=2, sort_keys=True)
-    st.code(config_json, language="json")
-    st.write("Configuration SHA-256:", hashlib.sha256(config_json.encode("utf-8")).hexdigest())
-    st.download_button("Download detailed scenario results CSV", detail.to_csv(index=False).encode(), "ao_laccp_validation_detailed.csv", "text/csv")
-    st.download_button("Download paired outcomes CSV", wide.to_csv(index=False).encode(), "ao_laccp_validation_paired.csv", "text/csv")
-    st.download_button("Download statistical summary CSV", summary.to_csv(index=False).encode(), "ao_laccp_validation_statistics.csv", "text/csv")
-    st.warning("The MDP logic is aligned to the current original code, but its outputs are not directly linked to the original dashboard metrics. The action-effect bridge remains assumed; sensitivity results test robustness to assumptions but do not calibrate them. The crypto benchmark executes RSA/ECDSA/Hybrid operations in a separate harness; it does not establish original-artifact switching or PQC agility.")
+    if "crypto_summary" in st.session_state:
+
+        crypto_summary = st.session_state[
+            "crypto_summary"
+        ]
+
+        trace = st.session_state[
+            "crypto_trace"
+        ]
+
+        st.dataframe(
+            crypto_summary.round(5),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        st.caption(
+            st.session_state["crypto_note"]
+        )
+
+        if not trace.empty:
+
+            st.dataframe(
+                trace.round(5),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            fig, ax = plt.subplots(
+                figsize=(9, 3.5)
+            )
+
+            ax.step(
+                trace["event_id"],
+                trace[
+                    "suite_changed_from_previous_event"
+                ].astype(int),
+                where="mid",
+            )
+
+            ax.set_yticks(
+                [0, 1],
+                labels=["No switch", "Switch"],
+            )
+
+            ax.set_xlabel(
+                "Event number"
+            )
+
+            ax.set_title(
+                "Suite changes in separate cryptographic benchmark"
+            )
+
+            ax.grid(
+                axis="x",
+                alpha=0.25,
+            )
+
+            fig.tight_layout()
+
+            st.pyplot(fig)
+
+            plt.close(fig)
+
+            st.download_button(
+                "Download cryptographic trace CSV",
+                trace.to_csv(
+                    index=False
+                ).encode("utf-8"),
+                "ao_laccp_crypto_switch_trace.csv",
+                "text/csv",
+            )
+
+    # --------------------------------------------------------
+    # Reproducibility record and exports
+    # --------------------------------------------------------
+
+    st.subheader(
+        "Reproducibility record"
+    )
+
+    config_json = json.dumps(
+        config,
+        indent=2,
+        sort_keys=True,
+    )
+
+    st.code(
+        config_json,
+        language="json",
+    )
+
+    config_hash = hashlib.sha256(
+        config_json.encode("utf-8")
+    ).hexdigest()
+
+    st.write(
+        "Configuration SHA-256:",
+        config_hash,
+    )
+
+    st.download_button(
+        "Download detailed scenario results",
+        detail.to_csv(
+            index=False
+        ).encode("utf-8"),
+        "ao_laccp_validation_detailed.csv",
+        "text/csv",
+    )
+
+    st.download_button(
+        "Download paired outcomes",
+        wide.to_csv(
+            index=False
+        ).encode("utf-8"),
+        "ao_laccp_validation_paired.csv",
+        "text/csv",
+    )
+
+    st.download_button(
+        "Download statistical summary",
+        summary.to_csv(
+            index=False
+        ).encode("utf-8"),
+        "ao_laccp_validation_statistics.csv",
+        "text/csv",
+    )
+
+    st.download_button(
+        "Download learned Q-table",
+        q.to_csv().encode("utf-8"),
+        "ao_laccp_learned_q_table.csv",
+        "text/csv",
+    )
+
+    st.warning(
+        "Interpret all findings conditionally. The simulation uses assumed "
+        "outcome equations and synthetic inputs. It does not establish production "
+        "effectiveness, validated post-quantum cryptographic agility, or superiority "
+        "outside the declared model."
+    )
+
 
 if __name__ == "__main__":
     main()
