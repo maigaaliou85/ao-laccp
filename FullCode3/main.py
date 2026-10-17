@@ -40,7 +40,8 @@ try:
 except Exception:
     CRYPTO_BACKEND_AVAILABLE = False
 
-st.set_page_config(page_title="AO-LACCP Scientific Paired Evaluation", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="AO-LACCP Scientific Research Evaluation", layout="wide")
+st.title("AO-LACCP: AI-Orchestrated Latency-Aware Cryptographic Control Plane")
 
 # Actions and MDP values copied from the current AO-LACCP full-framework code.
 # Outcome effects below are an explicit evaluation bridge, not present in the original artifact.
