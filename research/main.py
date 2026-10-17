@@ -1,23 +1,3 @@
-"""
-AO-LACCP Scientific Paired Evaluation Prototype
-================================================
-
-Streamlit-based, synthetic-only research demonstrator.
-
-Run:
-    pip install -r requirements.txt
-    streamlit run main.py
-
-Research limitations:
-- Synthetic results do not prove production or real-world efficacy.
-- The action-to-outcome bridge uses declared assumptions.
-- Both policies receive the same held-out scenario inputs.
-- The Q-learning policy is trained before evaluation and then frozen.
-- Statistical tests use independent run-level paired differences.
-- The separate RSA/ECDSA benchmark does not test PQC or validate the
-  original dashboard's dynamic cryptographic switching.
-"""
-
 from __future__ import annotations
 
 import hashlib
