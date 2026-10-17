@@ -115,5 +115,5 @@ else:
         run_module("FullCode2")
     elif st.session_state.module_choice.startswith("Case Study Scenario"):
         run_module("CaseStudyScenario")
-    elif st.session_state.module_choice.startswith("research"):
-        run_module("AO-LACCP Scientific Validation Research")
+    elif st.session_state.module_choice.startswith("AO-LACCP Scientific Validation Research"):
+        run_module("research")
