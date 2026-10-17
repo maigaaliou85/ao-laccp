@@ -74,7 +74,7 @@ def show_title_page():
 st.sidebar.header("Select Module to Run")
 module_options = ["None", "Full Code 1: AO-LACCP Full Framework", 
                   "Full Code 2: AO-LACCP Multi-Agent", 
-                  "Case Study Scenario: Threat Scenarios", "AO-LACCP Research: AO-LACCP scientific validation"]
+                  "Case Study Scenario: Threat Scenarios", "research: AO-LACCP scientific validation"]
 
 if "module_choice" not in st.session_state:
     st.session_state.module_choice = "None"
