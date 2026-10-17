@@ -116,4 +116,4 @@ else:
     elif st.session_state.module_choice.startswith("Case Study Scenario"):
         run_module("CaseStudyScenario")
     elif st.session_state.module_choice.startswith("AO-LACCP Research"):
-        run_module("AOLACCPResearch")
+        run_module("research")
