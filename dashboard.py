@@ -17,18 +17,42 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Absolute path to the directory containing this dashboard file.
+# ============================================================
+# PATHS AND MODULE CONFIGURATION
+# ============================================================
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 LOGO_PATH = os.path.join(BASE_DIR, "marymount_logo.png")
 
-# Map sidebar labels to actual module folders.
 MODULES = {
     "Full Code 1: AO-LACCP Full Framework": "FullCode1",
     "Full Code 2: AO-LACCP Multi-Agent": "FullCode2",
     "Case Study Scenario: Threat Scenarios": "CaseStudyScenario",
     "Full Code 3: AO-LACCP Scientific Research Evaluation": "FullCode3",
 }
+
+selection_options = ["Home"] + list(MODULES.keys())
+
+# ============================================================
+# INITIALIZE NAVIGATION STATE
+# ============================================================
+# IMPORTANT:
+# Initialize the widget state before creating the radio widget.
+# Do not assign to module_choice later in the main script.
+# Use the callback below when returning to Home.
+
+if "module_choice" not in st.session_state:
+    st.session_state["module_choice"] = "Home"
+
+if st.session_state["module_choice"] not in selection_options:
+    st.session_state["module_choice"] = "Home"
+
+
+def return_to_home():
+    """Set navigation state before Streamlit reruns the app."""
+    st.session_state["module_choice"] = "Home"
+
 
 # ============================================================
 # LOGO AND HEADER
@@ -72,12 +96,15 @@ st.divider()
 # ============================================================
 
 def show_title_page():
+    """Display the AO-LACCP research title page."""
+
     st.markdown(
         """
         <div style="text-align: center;">
             <h3 style="color: #2c3e50;">
                 AI-Orchestrated Latency-Aware Cryptographic Control Plane
             </h3>
+
             <p style="
                 font-family: Arial, sans-serif;
                 font-size: 16px;
@@ -89,6 +116,7 @@ def show_title_page():
                     in Banking and FinTech Ecosystems
                 </strong>
             </p>
+
             <p style="
                 font-family: Arial, sans-serif;
                 font-size: 16px;
@@ -114,15 +142,19 @@ def show_title_page():
         ">
             By<br>
             <strong>Aliou Maiga</strong><br><br>
+
             Michelle Liu, PhD — Committee Chair<br>
             Nathan Green, PhD — Committee Member<br>
             Seyedamin Pouriyeh, PhD — External Reader<br>
             Anne Magro, PhD — Dean<br><br>
+
             College of Business, Innovation, Leadership, and Technology
             <br><br>
+
             A Dissertation Proposal Presented in Partial Fulfillment
             of the Requirements for the Degree of Doctor of Science
             <br><br>
+
             Marymount University<br>
             May 2027
         </div>
@@ -141,8 +173,8 @@ def show_title_page():
     )
 
     st.info(
-        "Select a module from the sidebar, then click "
-        "**Run Selected Module**."
+        "Select a module from the sidebar to open its interface. "
+        "Use Return to Home to return to this page."
     )
 
     st.markdown("### Available modules")
@@ -164,12 +196,11 @@ def show_title_page():
 
 def run_module(folder_name):
     """
-    Load and run a module from:
+    Load and run:
         <dashboard directory>/<folder_name>/main.py
 
-    Modules with a main() function are called explicitly.
-    Modules without a main() function execute their top-level
-    code when imported.
+    If the module defines main(), call it explicitly.
+    Otherwise, its top-level code executes when imported.
     """
 
     module_dir = os.path.join(BASE_DIR, folder_name)
@@ -177,12 +208,14 @@ def run_module(folder_name):
 
     st.subheader(folder_name)
 
+    # Validate module directory.
     if not os.path.isdir(module_dir):
         st.error(f"Module folder not found: {module_dir}")
-        st.markdown("Check that your repository has this folder:")
+        st.markdown("Expected folder structure:")
         st.code(f"{folder_name}/main.py")
         return
 
+    # Validate module entry point.
     if not os.path.isfile(module_path):
         st.error(f"Module file not found: {module_path}")
         st.markdown(
@@ -190,12 +223,15 @@ def run_module(folder_name):
         )
         return
 
-    # Use a unique module name to avoid collisions.
+    # Use a unique name for each imported module.
     module_name = f"ao_laccp_{folder_name.lower()}"
 
+    # Track whether this function adds a path to sys.path.
+    added_path = module_dir not in sys.path
+
     try:
-        # Ensure the module can import sibling files from its folder.
-        if module_dir not in sys.path:
+        # Allow the module to import its own sibling files.
+        if added_path:
             sys.path.insert(0, module_dir)
 
         spec = importlib.util.spec_from_file_location(
@@ -204,7 +240,9 @@ def run_module(folder_name):
         )
 
         if spec is None or spec.loader is None:
-            st.error("Python could not create a loader for this module.")
+            st.error(
+                f"Python could not create a loader for {module_path}"
+            )
             return
 
         module = importlib.util.module_from_spec(spec)
@@ -213,15 +251,7 @@ def run_module(folder_name):
         with st.spinner(f"Loading {folder_name}..."):
             spec.loader.exec_module(module)
 
-        # Support modules written with:
-        # def main():
-        #     ...
-        #
-        # if __name__ == "__main__":
-        #     main()
-        #
-        # Importing a module does not satisfy that __main__ condition,
-        # so call main() here when it exists.
+        # Modules using an explicit main() entry point need it called.
         module_main = getattr(module, "main", None)
 
         if callable(module_main):
@@ -232,12 +262,8 @@ def run_module(folder_name):
         st.exception(exc)
 
     finally:
-        # Remove the inserted path without removing it if it was
-        # already present before this function ran.
-        if (
-            module_dir in sys.path
-            and sys.path.index(module_dir) == 0
-        ):
+        # Remove only the path this function added.
+        if added_path and module_dir in sys.path:
             sys.path.remove(module_dir)
 
 
@@ -248,15 +274,7 @@ def run_module(folder_name):
 st.sidebar.title("AO-LACCP Navigation")
 st.sidebar.caption("Doctoral Research Demonstration")
 
-selection_options = ["Home"] + list(MODULES.keys())
-
-if "module_choice" not in st.session_state:
-    st.session_state["module_choice"] = "Home"
-
-# Recover safely if the stored choice no longer exists.
-if st.session_state["module_choice"] not in selection_options:
-    st.session_state["module_choice"] = "Home"
-
+# Create the radio widget using the initialized state.
 selected_module = st.sidebar.radio(
     "Select a module",
     options=selection_options,
@@ -264,15 +282,15 @@ selected_module = st.sidebar.radio(
 )
 
 st.sidebar.divider()
-
 st.sidebar.caption("Module controls")
 
-if st.sidebar.button(
+# The callback changes state before Streamlit reruns the app.
+# Do not assign to module_choice inside an ordinary button block.
+st.sidebar.button(
     "Return to Home",
     use_container_width=True,
-):
-    st.session_state["module_choice"] = "Home"
-    st.rerun()
+    on_click=return_to_home,
+)
 
 st.sidebar.caption(
     "If a module does not open, check the folder structure "
