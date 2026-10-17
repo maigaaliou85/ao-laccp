@@ -1,15 +1,14 @@
-
 import os
 import sys
 import importlib.util
+
 import streamlit as st
 from PIL import Image
 
 # ============================================================
-# AO-LACCP DASHBOARD
+# AO-LACCP DASHBOARD CONFIGURATION
 # ============================================================
 
-# Configure the page before other Streamlit commands.
 st.set_page_config(
     page_title="AO-LACCP Dashboard",
     page_icon="🔐",
@@ -17,12 +16,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ============================================================
-# PATHS AND MODULE CONFIGURATION
-# ============================================================
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
 LOGO_PATH = os.path.join(BASE_DIR, "marymount_logo.png")
 
 MODULES = {
@@ -32,30 +26,27 @@ MODULES = {
     "Full Code 3: AO-LACCP Scientific Research Evaluation": "FullCode3",
 }
 
-selection_options = ["Home"] + list(MODULES.keys())
+SELECTION_OPTIONS = ["Home"] + list(MODULES.keys())
 
 # ============================================================
-# INITIALIZE NAVIGATION STATE
+# NAVIGATION STATE
 # ============================================================
-# IMPORTANT:
-# Initialize the widget state before creating the radio widget.
-# Do not assign to module_choice later in the main script.
-# Use the callback below when returning to Home.
 
+# Initialize the state before creating the radio widget.
 if "module_choice" not in st.session_state:
     st.session_state["module_choice"] = "Home"
 
-if st.session_state["module_choice"] not in selection_options:
+if st.session_state["module_choice"] not in SELECTION_OPTIONS:
     st.session_state["module_choice"] = "Home"
 
 
 def return_to_home():
-    """Set navigation state before Streamlit reruns the app."""
+    """Change the navigation state before Streamlit reruns."""
     st.session_state["module_choice"] = "Home"
 
 
 # ============================================================
-# LOGO AND HEADER
+# HEADER AND LOGO
 # ============================================================
 
 logo_col1, logo_col2, logo_col3 = st.columns([1, 2, 1])
@@ -65,8 +56,8 @@ with logo_col2:
         try:
             logo = Image.open(LOGO_PATH)
             st.image(logo, width=400)
-        except Exception as exc:
-            st.warning(f"The logo could not be opened: {exc}")
+        except Exception:
+            st.warning("The Marymount logo could not be opened.")
     else:
         st.warning(
             "Marymount logo not found. Expected location: "
@@ -91,16 +82,19 @@ st.markdown(
 
 st.divider()
 
+
 # ============================================================
 # TITLE PAGE
 # ============================================================
 
 def show_title_page():
-    """Display the AO-LACCP research title page."""
+    """Render the AO-LACCP doctoral research title page."""
 
+    # Render the title and research topic as HTML.
     st.markdown(
         """
         <div style="text-align: center;">
+
             <h3 style="color: #2c3e50;">
                 AI-Orchestrated Latency-Aware Cryptographic Control Plane
             </h3>
@@ -123,14 +117,17 @@ def show_title_page():
                 color: #8B0000;
             ">
                 <strong>
-                    AO-LACCP Artifact Simulation – Doctoral Research Demo
+                    AO-LACCP Artifact Simulation –
+                    Doctoral Research Demo
                 </strong>
             </p>
+
         </div>
         """,
         unsafe_allow_html=True,
     )
 
+    # Render the author, committee, institution, and date.
     st.markdown(
         """
         <div style="
@@ -168,7 +165,7 @@ def show_title_page():
 
     st.write(
         "Use the sidebar to open an AO-LACCP module. "
-        "Each module should contain its own simulation, analysis, "
+        "Each module contains its own simulation, analysis, "
         "or evaluation interface."
     )
 
@@ -196,11 +193,11 @@ def show_title_page():
 
 def run_module(folder_name):
     """
-    Load and run:
+    Load and execute:
         <dashboard directory>/<folder_name>/main.py
 
     If the module defines main(), call it explicitly.
-    Otherwise, its top-level code executes when imported.
+    Otherwise, execute its top-level code when imported.
     """
 
     module_dir = os.path.join(BASE_DIR, folder_name)
@@ -208,29 +205,23 @@ def run_module(folder_name):
 
     st.subheader(folder_name)
 
-    # Validate module directory.
     if not os.path.isdir(module_dir):
         st.error(f"Module folder not found: {module_dir}")
-        st.markdown("Expected folder structure:")
         st.code(f"{folder_name}/main.py")
         return
 
-    # Validate module entry point.
     if not os.path.isfile(module_path):
-        st.error(f"Module file not found: {module_path}")
-        st.markdown(
-            "Create a file named `main.py` inside the module folder."
+        st.error(f"Module entry point not found: {module_path}")
+        st.info(
+            f"Create a main.py file inside the {folder_name} folder."
         )
         return
 
-    # Use a unique name for each imported module.
     module_name = f"ao_laccp_{folder_name.lower()}"
-
-    # Track whether this function adds a path to sys.path.
     added_path = module_dir not in sys.path
 
     try:
-        # Allow the module to import its own sibling files.
+        # Allow the module to import local sibling files.
         if added_path:
             sys.path.insert(0, module_dir)
 
@@ -240,9 +231,7 @@ def run_module(folder_name):
         )
 
         if spec is None or spec.loader is None:
-            st.error(
-                f"Python could not create a loader for {module_path}"
-            )
+            st.error("Python could not load the selected module.")
             return
 
         module = importlib.util.module_from_spec(spec)
@@ -251,7 +240,7 @@ def run_module(folder_name):
         with st.spinner(f"Loading {folder_name}..."):
             spec.loader.exec_module(module)
 
-        # Modules using an explicit main() entry point need it called.
+        # Call the module entry point when provided.
         module_main = getattr(module, "main", None)
 
         if callable(module_main):
@@ -274,28 +263,28 @@ def run_module(folder_name):
 st.sidebar.title("AO-LACCP Navigation")
 st.sidebar.caption("Doctoral Research Demonstration")
 
-# Create the radio widget using the initialized state.
 selected_module = st.sidebar.radio(
     "Select a module",
-    options=selection_options,
+    options=SELECTION_OPTIONS,
     key="module_choice",
 )
 
 st.sidebar.divider()
 st.sidebar.caption("Module controls")
 
-# The callback changes state before Streamlit reruns the app.
-# Do not assign to module_choice inside an ordinary button block.
+# The callback runs before the next script execution.
 st.sidebar.button(
     "Return to Home",
+    key="return_home_button",
     use_container_width=True,
     on_click=return_to_home,
 )
 
 st.sidebar.caption(
-    "If a module does not open, check the folder structure "
-    "and the error message shown on the main page."
+    "If a module does not open, verify its folder structure "
+    "and review any error displayed on the main page."
 )
+
 
 # ============================================================
 # MAIN CONTENT
