@@ -1,237 +1,4 @@
 
-i used now this below, but give me errors (ValueError: This app has encountered an error. The original error message is redacted to prevent data leaks. Full error details have been recorded in the logs (if you're on Streamlit Cloud, click on 'Manage app' in the lower right of your app).
-Traceback:
-File "/mount/src/ao-laccp/dashboard.py", line 85, in <module>     index=module_options.index(st.session_state.module_choice)):
-import streamlit as st
-from PIL import Image
-import os
-import importlib.util
-import sys
-
-# ==============================
-# DASHBOARD TITLE PAGE
-# ==============================
-
-# ------------------------------
-# Logo Path
-# ------------------------------
-logo_path = os.path.join(os.path.dirname(__file__), "marymount_logo.png")
-
-# ------------------------------
-# Display Logo Centered
-# ------------------------------
-if os.path.exists(logo_path):
-    try:
-        img = Image.open(logo_path)
-        # Center the image using st.image inside a column
-        col1, col2, col3 = st.columns([1,2,1])  # middle column is wider
-        with col2:
-            st.image(img, width=440, use_container_width=False)
-    except Exception as e:
-        st.warning(f"Cannot open logo: {e}")
-else:
-    st.warning(f"Logo not found: {logo_path}")
-
-# ------------------------------
-# HTML Header Centered and Colored
-# ------------------------------
-st.markdown("""
-<div style="text-align: center; padding: 10px; background-color: #f5f5f5;">
-    <h1 style="color: #10069F;">AO-LACCP Dashboard</h1>
-</div>
-""", unsafe_allow_html=True)
-
-# ------------------------------
-# Function to Show Title Page (Centered)
-# ------------------------------
-def show_title_page():
-    st.markdown("""
-    <div style="text-align: center;">
-        <h4 style="color: #2c3e50;">AI-Orchestrated Latency-Aware Cryptographic Control Plane</h4>
-    
-<p style="text-align: center; font-family: Arial; font-size: 11pt; color: #8B0000; text-transform: capitalize;">
-    <strong><b>TOPIC: AI-Orchestrated Cyber Resilience: An Adaptive Framework For Cyber Risk Management In  Banking And Fintech Ecosystems</b></strong>
-</p>
-<p style="text-align: center; font-family: Arial; font-size: 14pt; color: #8B0000; text-transform: capitalize;">
-    <strong><b>AO-LACCP Artifact Simulation – Doctoral Research Demo</b></strong>
-</p>
-  
-
-  <p style="text-align: center; font-family: Arial; font-size: 14px; color: #2c3e50; line-height:1.5;">
-    By<br>
-    <strong>Aliou Maiga</strong><br><br>
-    MICHELLE LIU, PhD, Committee Chair<br>
-    NATHAN GREEN, PhD, Committee Member<br>
-    SEYEDAMIN POURIYEH, PhD, External Reader<br>
-   ANNE MAGRO, PhD, Dean<br><br>
-    College of Business, Innovation, Leadership, and Technology<br><br>
-    A Dissertation Proposal Presented in Partial Fulfillment of the Requirements for the Degree Doctor of Science<br><br>
-    Marymount University<br>
-    May 2027
-</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-# ==============================
-# Sidebar Module Selection
-# ==============================
-st.sidebar.header("Select Module to Run")
-module_options = ["None", "Full Code 1: AO-LACCP Full Framework", 
-                  "Full Code 2: AO-LACCP Multi-Agent", 
-                  "Case Study Scenario: Threat Scenarios", "Full Code 3: AO-LACCP Scientific Research Evaluation"]
-
-if "module_choice" not in st.session_state:
-    st.session_state.module_choice = "None"
-
-st.session_state.module_choice = st.sidebar.radio(
-    "Choose Module",
-    module_options,
-    index=module_options.index(st.session_state.module_choice)
-)
-
-if st.session_state.module_choice != "None":
-    if st.sidebar.button("Close Module"):
-        st.session_state.module_choice = "None"
-        st.experimental_rerun = True
-
-# ==============================
-# Function to Import and Run a Module
-# ==============================
-def run_module(folder_name):
-    module_path = os.path.join(folder_name, "main.py")
-    if os.path.exists(module_path):
-        spec = importlib.util.spec_from_file_location("module_main", module_path)
-        module = importlib.util.module_from_spec(spec)
-        sys.modules["module_main"] = module
-        spec.loader.exec_module(module)
-    else:
-        st.error(f"Module not found: {module_path}")
-
-# ==============================
-# Run Title Page or Module
-# ==============================
-if st.session_state.module_choice == "None":
-    show_title_page()
-else:
-    if st.session_state.module_choice.startswith("Full Code 1"):
-        run_module("FullCode1")
-    elif st.session_state.module_choice.startswith("Full Code 2"):
-        run_module("FullCode2")
-    elif st.session_state.module_choice.startswith("Case Study Scenario"):
-        run_module("CaseStudyScenario")
-    elif st.session_state.module_choice.startswith("Full Code 3"):
-        run_module("FullCode3")
-
-…
-The ValueError happens because st.session_state.module_choice contains a value that is not in module_options. Therefore, this expression fails:
-
-module_options.index(st.session_state.module_choice)
-
-Your code also has two other issues: it assigns a value to the radio widget's state after widget creation, and st.experimental_rerun = True does not rerun the app.
-
-I'll fix all three issues in the full code below. I'll also keep your title page, logo, four modules, and HTML formatting.
-
-Replace your entire dashboard.py with this corrected version. The main fix is to validate the saved selection before creating the radio widget and use a callback for the Close Module button.
-
-
-import os
-import sys
-import importlib.util
-
-import streamlit as st
-from PIL import Image
-
-# ============================================================
-# AO-LACCP DASHBOARD CONFIGURATION
-# ============================================================
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-LOGO_PATH = os.path.join(BASE_DIR, "marymount_logo.png")
-
-MODULES = {
-    "Full Code 1: AO-LACCP Full Framework": "FullCode1",
-    "Full Code 2: AO-LACCP Multi-Agent": "FullCode2",
-    "Case Study Scenario: Threat Scenarios": "CaseStudyScenario",
-    "Full Code 3: AO-LACCP Scientific Research Evaluation": "FullCode3",
-}
-
-MODULE_OPTIONS = ["None"] + list(MODULES.keys())
-
-# ============================================================
-# INITIALIZE SESSION STATE BEFORE CREATING THE RADIO WIDGET
-# ============================================================
-
-# Fix stale or invalid values left in the session.
-if st.session_state.get("module_choice") not in MODULE_OPTIONS:
-    st.session_state["module_choice"] = "None"
-
-
-def close_module():
-    """Reset the selection before Streamlit reruns the script."""
-    st.session_state["module_choice"] = "None"
-
-What this fixes
-ValueError: invalid saved selections are reset to "None" before the radio widget is created.
-
-StreamlitWidgetAlreadyInstantiatedError: the radio widget's state is changed through a callback rather than directly after the widget is rendered.
-
-Close Module: uses on_click=close_module instead of the incorrect st.experimental_rerun = True.
-
-Module paths: uses absolute paths based on the dashboard's directory, which is more reliable on Streamlit Cloud.
-
-Deploy it
-Replace the complete dashboard.py in your GitHub repository.
-
-Commit and push your changes.
-
-Wait for Streamlit Cloud to redeploy, then refresh the app.
-
-If a new error appears inside one of the four modules, share its traceback separately. A child module may have its own issue, such as calling st.set_page_config() again or accessing a missing file.
-
-when i run Full Code 3 there is any ouput
-If you select Full Code 3: AO-LACCP Scientific Research Evaluation and nothing appears, the most likely issue is in how dashboard.py loads FullCode3/main.py.
-
-Your current loader executes the module's top-level code and then calls main() if it exists. If Full Code 3 uses a different entry point, or its Streamlit interface is not inside main(), the dashboard may not display the expected results.
-
-Step 1 — Check FullCode3/main.py
-Open the file and look at its bottom. If it contains:
-
-if __name__ == "__main__":
-    main()
-
-that is fine: the dashboard loader explicitly calls main() after importing the file.
-
-However, if the file defines a function with a different name, such as run_app(), the current loader will not call it automatically.
-
-Step 2 — Add diagnostic messages to the module loader
-In dashboard.py, inside run_module(), replace this section:
-
-module_main = getattr(module, "main", None)
-
-if callable(module_main):
-    module_main()
-
-with:
-
-module_main = getattr(module, "main", None)
-
-if callable(module_main):
-    st.write(f"Starting {folder_name}...")
-    module_main()
-    st.success(f"{folder_name} finished running.")
-else:
-    st.warning(
-        f"{folder_name}/main.py loaded, but no main() function was found."
-    )
-
-This will tell us whether the loader is actually reaching the module's entry point.
-
-Step 3 — Check the Streamlit Cloud logs
-If you see an error, open Manage app → Logs in Streamlit Community Cloud. Look for a traceback mentioning FullCode3/main.py.
-
-One thing I need from you
-Please paste the last 40–60 lines of FullCode3/main.py, including the main() function and the code at the bottom of the file. I can then correct the loader or entry point specifically so that Full Code 3 displays its evaluation tables, charts, and research outputs.
-
 
 Pasted text(20261017-193255).txt
 Document
@@ -331,7 +98,81 @@ If the error persists after replacing the file, send me that full error message.
 
 FullCode3_fixed.py
 Code
+SyntaxError: This app has encountered an error. The original error message is redacted to prevent data leaks. Full error details have been recorded in the logs (if you're on Streamlit Cloud, click on 'Manage app' in the lower right of your app).
+Traceback:
+File "/mount/src/ao-laccp/dashboard.py", line 119, in <module>     run_module("FullCode3")     ~~~~~~~~~~^^^^^^^^^^^^^
+File "/mount/src/ao-laccp/dashboard.py", line 102, in run_module     spec.loader.exec_module(module)     ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^
+File "<frozen importlib._bootstrap_external>", line 759, in exec_module
+File "<frozen importlib._bootstrap_external>", line 897, in get_code
+File "<frozen importlib._bootstrap_external>", line 827, in source_to_code
+File "<frozen importlib._bootstrap>", line 491, in _call_with_frames_removed
 
+If it still fails, expose the exact syntax error
+Your traceback stops before showing the filename and line number of the actual syntax error. To diagnose it directly in Streamlit, update the run_module() function in dashboard.py.
+
+Find this line:
+
+spec.loader.exec_module(module)
+
+Replace it with:
+
+try:
+    spec.loader.exec_module(module)
+except SyntaxError as e:
+    st.error(f"SyntaxError in module: {module_name}")
+    st.write(f"File: {e.filename}")
+    st.write(f"Line: {e.lineno}")
+    st.write(f"Column: {e.offset}")
+    st.write(f"Message: {e.msg}")
+
+    if e.text:
+        st.code(e.text, language="python")
+
+    st.stop()
+
+This should display the actual syntax error in your app instead of leaving you with the incomplete traceback. Commit and push dashboard.py, then check the app again.
+
+Important: I verified that the corrected file linked above compiles successfully locally. That does not prove that the same contents are deployed in your GitHub repository.
+
+If you send me the resulting error message—with the filename, line number, and displayed code—I can pinpoint the next correction rather than guessing.
+
+fix and give me the full code
+
+Worked for 29s
+I fixed the full Code 3 source and verified that it passes Python's syntax compilation check. The updated version contains 1,753 lines and includes fixes for the Streamlit page-configuration conflict and Matplotlib boxplot compatibility.
+
+Download the complete corrected code
+FullCode3_fixed.py
+
+Complete Python source file — ready to replace Code 3.
+
+Download the Python file
+
+FullCode3_fixed.txt
+
+Same complete source in plain-text format for copying into GitHub.
+
+Download the text version
+
+Install it in your GitHub project
+Open your ao-laccp repository.
+
+Open FullCode3/main.py.
+
+Replace the entire contents with the contents of FullCode3_fixed.py—not just the changed lines.
+
+Commit the change and wait for Streamlit Cloud to redeploy.
+
+Keep the file at FullCode3/main.py if that is the path your dashboard.py loader expects.
+
+If the SyntaxError remains
+The corrected source compiles locally, but your traceback does not show the exact line of the error in the deployed file. If the error persists after deployment, open Streamlit Cloud → Manage app → Logs and share the full SyntaxError, including its filename, line number, and code line.
+
+Research note: This fixes code compatibility issues; it does not independently establish that AO-LACCP outperforms the baseline. The simulation assumptions and outcome calculations still need to be justified and evaluated fairly before you report the results as dissertation evidence.
+
+
+Chat paused until usage resets at 8:30 PM
+You’ve reached the limit for chats that include files or images. Start a new text-only chat or upgrade to continue now.
 
 
 """AO-LACCP scientific paired-evaluation prototype.
@@ -352,6 +193,7 @@ Run:
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import time
 from dataclasses import dataclass, asdict
@@ -369,6 +211,15 @@ try:
     CRYPTO_BACKEND_AVAILABLE = True
 except Exception:
     CRYPTO_BACKEND_AVAILABLE = False
+
+def compatible_boxplot(ax, data, labels, **kwargs):
+    """Call Matplotlib boxplot with the label keyword supported by this version."""
+    parameters = inspect.signature(ax.boxplot).parameters
+    label_key = "tick_labels" if "tick_labels" in parameters else "labels"
+    options = dict(kwargs)
+    options[label_key] = labels
+    return ax.boxplot(data, **options)
+
 
 # When this module is loaded by the root dashboard, that dashboard has already
 # emitted Streamlit commands. Calling st.set_page_config() here would raise a
@@ -420,13 +271,3 @@ PERSISTENCE = {
     "benign": 0.10,
     "brute_force": 0.72,
     "phishing": 0.66,
-    "data_exfiltration": 0.82,
-    "mitm": 0.78,
-    "zero_day": 0.88,
-}
-ACTION_MATCH = {
-    "benign": {
-        "monitor": 0.75, "rate_limit": 0.60,
-        "isolate": 0.45, "crypto_harden": 0.50,
-    },
-    "brute_force": {
