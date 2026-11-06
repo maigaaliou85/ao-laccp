@@ -1,3 +1,4 @@
+
 import streamlit as st
 from PIL import Image
 import os
@@ -72,9 +73,14 @@ def show_title_page():
 # Sidebar Module Selection
 # ==============================
 st.sidebar.header("Select Module to Run")
-module_options = ["None", "Full Code 1: AO-LACCP Full Framework", 
-                  "Full Code 2: AO-LACCP Multi-Agent", 
-                  "Case Study Scenario: Threat Scenarios"]
+
+module_options = [
+    "None",
+    "Full Code 1: AO-LACCP Full Framework",
+    "Full Code 2: AO-LACCP Multi-Agent",
+    "Full Code 3: AO-LACCP Baseline",
+    "Case Study Scenario: Threat Scenarios"
+]
 
 if "module_choice" not in st.session_state:
     st.session_state.module_choice = "None"
@@ -113,5 +119,7 @@ else:
         run_module("FullCode1")
     elif st.session_state.module_choice.startswith("Full Code 2"):
         run_module("FullCode2")
+    elif st.session_state.module_choice.startswith("Full Code 3"):
+        run_module("FullCode3")
     elif st.session_state.module_choice.startswith("Case Study Scenario"):
         run_module("CaseStudyScenario")
