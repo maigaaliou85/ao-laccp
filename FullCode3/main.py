@@ -603,7 +603,23 @@ def main() -> None:
     st.subheader("Paired outcome distributions")
     selected = st.selectbox("Select metric", ["resulting_risk", "simulated_latency_ms", "service_impact_proxy", "action_cost_proxy"])
     fig, ax = plt.subplots(figsize=(8, 4.5))
-    ax.boxplot([detail.loc[detail.policy == "Baseline", selected], detail.loc[detail.policy == "AO-LACCP artifact-aligned Q-learning", selected]], labels=["Baseline", "AO-LACCP artifact-aligned Q-learning"], showmeans=True)
+   ax.boxplot(
+    [
+        detail.loc[
+            detail.policy == "Baseline", selected
+        ].dropna().to_numpy(),
+
+        detail.loc[
+            detail.policy == "AO-LACCP artifact-aligned Q-learning",
+            selected
+        ].dropna().to_numpy()
+    ],
+    tick_labels=[
+        "Baseline",
+        "AO-LACCP artifact-aligned Q-learning"
+    ],
+    showmeans=True
+)
     ax.set_ylabel(selected); ax.set_title("Held-out scenario outcome distributions"); ax.grid(axis="y", alpha=.25)
     fig.tight_layout(); st.pyplot(fig); plt.close(fig)
     st.subheader("Hypothesis-testing comparison graphs")
