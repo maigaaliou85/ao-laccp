@@ -2,10 +2,11 @@ streamlit
 pandas
 numpy
 plotly
-matplotlib>=3.9,<4.0
+matplotlib
 scipy
 seaborn
 scikit-learn
 statsmodels
 cryptography
 Pillow
+
