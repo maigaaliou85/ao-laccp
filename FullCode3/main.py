@@ -116,7 +116,5 @@ detail.loc[
     st.download_button("Download statistical summary CSV", summary.to_csv(index=False).encode(), "ao_laccp_validation_statistics.csv", "text/csv")
     st.warning("The MDP logic is aligned to the current original code, but its outputs are not directly linked to the original dashboard metrics. The action-effect bridge remains assumed; sensitivity results test robustness to assumptions but do not calibrate them. The crypto benchmark executes RSA/ECDSA/Hybrid operations in a separate harness; it does not establish original-artifact switching or PQC agility.")
 
-#if __name__ == "__main__":
-#    main()
-# Execute the Streamlit application
+if __name__ == "__main__":
 main()
