@@ -1,18 +1,3 @@
-"""AO-LACCP scientific paired-evaluation prototype.
-
-This is a transparent synthetic simulation harness, NOT a production validation.
-It trains a tabular Q-learning policy on training scenarios, freezes it, and
-compares it with a fixed-threshold baseline on independent held-out scenarios.
-Both policies receive the same scenario inputs and share one outcome simulator.
-
-IMPORTANT: action effectiveness, scenario distributions, latency equation, and
-reward weights are explicit assumptions. Justify/calibrate them and conduct
-sensitivity analyses before using results as dissertation evidence.
-
-Run:
-    pip install streamlit pandas numpy scipy matplotlib
-    streamlit run ao_laccp_scientific_validation_research_ready.py
-"""
 from __future__ import annotations
 
 import hashlib
